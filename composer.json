@@ -1,0 +1,68 @@
+{
+    "name": "aporat/laravel-appstore-purchases",
+    "description": "Laravel integration for handling App Store purchase receipts and notifications",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/aporat/laravel-appstore-purchases",
+    "keywords": [
+        "laravel",
+        "app store",
+        "apple"
+    ],
+    "authors": [
+        {
+            "name": "Adar Porat",
+            "email": "aporat28@gmail.com",
+            "homepage": "https://github.com/aporat",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "ext-json": "*",
+        "illuminate/support": "^10.0 || ^11.0 || ^12.0",
+        "aporat/store-receipt-validator": "^6.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.0",
+        "laravel/pint": "^1.21",
+        "phpunit/phpunit": "^12.0",
+        "mockery/mockery": "^1.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Aporat\\AppStorePurchases\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Aporat\\AppStorePurchases\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Aporat\\AppStorePurchases\\ServiceProviders\\AppStorePurchasesServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test-ci": "phpunit --coverage-text --coverage-clover coverage.xml --log-junit junit.xml",
+        "check": "vendor/bin/pint --test"
+    },
+    "support": {
+        "issues": "https://github.com/aporat/laravel-appstore-purchases/issues",
+        "source": "https://github.com/aporat/laravel-appstore-purchases"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

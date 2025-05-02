@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  release:
+    types:
+      - published
+
+jobs:
+  php-tests:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [8.4]
+        laravel: [10.*, 11.*, 12.*]
+        os: [ubuntu-latest]
+        coverage: [none]
+        include:
+          - php: 8.4
+            laravel: 12.*
+            os: ubuntu-latest
+            coverage: xdebug
+
+    name: '[P${{ matrix.php }}] [L${{ matrix.laravel }}] [${{ matrix.coverage }}]'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring json openssl xdebug
+          ini-values: memory_limit=-1
+          tools: composer:v2
+          coverage: ${{ matrix.coverage }}
+        env:
+          update: true
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ matrix.os }}-${{ matrix.php }}-${{ matrix.laravel }}-vendor-${{ hashFiles('**/composer.lock') }}
+
+      - name: Install Dependencies
+        uses: ramsey/composer-install@v3
+
+      - name: Execute linter
+        run: composer check
+
+      - name: Execute tests (Unit and Feature tests) via PHPUnit
+        if: matrix.coverage == 'none'
+        run: composer test
+
+      - name: Execute tests (Unit and Feature tests) via PHPUnit
+        if: matrix.coverage == 'xdebug'
+        run: composer test-ci
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          if: matrix.coverage == 'xdebug'
+          slug: ${{ github.repository }}
+
+      - name: Upload test results to Codecov
+        if: matrix.coverage == 'xdebug'
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: ${{ github.repository }}
