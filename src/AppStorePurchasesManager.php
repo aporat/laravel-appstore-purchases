@@ -6,8 +6,8 @@ use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
 use ReceiptValidator\AbstractValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
-use ReceiptValidator\iTunes\Validator as iTunesValidator;
 use ReceiptValidator\Environment;
+use ReceiptValidator\iTunes\Validator as iTunesValidator;
 
 class AppStorePurchasesManager
 {

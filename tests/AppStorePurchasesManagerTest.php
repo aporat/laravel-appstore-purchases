@@ -5,8 +5,8 @@ namespace Aporat\AppStorePurchases\Tests;
 use Aporat\AppStorePurchases\AppStorePurchasesManager;
 use Orchestra\Testbench\TestCase;
 use ReceiptValidator\AppleAppStore\Validator as AppleValidator;
-use ReceiptValidator\iTunes\Validator as iTunesValidator;
 use ReceiptValidator\Environment;
+use ReceiptValidator\iTunes\Validator as iTunesValidator;
 
 class AppStorePurchasesManagerTest extends TestCase
 {

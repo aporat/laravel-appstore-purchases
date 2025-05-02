@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\Facade;
  */
 class AppStorePurchases extends Facade
 {
-
     protected static function getFacadeAccessor(): string
     {
         return 'appstore-purchases';
