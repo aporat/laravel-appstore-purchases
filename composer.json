@@ -21,7 +21,7 @@
         "php": "^8.4",
         "ext-json": "*",
         "illuminate/support": "^10.0 || ^11.0 || ^12.0",
-        "aporat/store-receipt-validator": "^6.0"
+        "aporat/store-receipt-validator": "dev-main"
     },
     "require-dev": {
         "orchestra/testbench": "^10.0",
