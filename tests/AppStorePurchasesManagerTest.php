@@ -5,6 +5,7 @@ namespace Aporat\AppStorePurchases\Tests;
 use Aporat\AppStorePurchases\AppStorePurchasesManager;
 use Orchestra\Testbench\TestCase;
 use ReceiptValidator\AppleAppStore\Validator as AppleValidator;
+use ReceiptValidator\iTunes\Validator as iTunesValidator;
 use ReceiptValidator\Environment;
 
 class AppStorePurchasesManagerTest extends TestCase
@@ -19,6 +20,12 @@ class AppStorePurchasesManagerTest extends TestCase
             'bundle_id' => 'com.example.app',
             'environment' => Environment::SANDBOX,
         ]);
+
+        $app['config']->set('appstore-purchases.validators.itunes', [
+            'validator' => 'itunes',
+            'shared_secret' => 'SHARED_SECRET',
+            'environment' => Environment::SANDBOX,
+        ]);
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
@@ -29,5 +36,15 @@ class AppStorePurchasesManagerTest extends TestCase
         $validator = $manager->get('apple-app-store');
 
         $this->assertInstanceOf(AppleValidator::class, $validator);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function it_resolves_itunes_validator()
+    {
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $validator = $manager->get('itunes');
+
+        $this->assertInstanceOf(iTunesValidator::class, $validator);
     }
 }

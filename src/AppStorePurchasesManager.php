@@ -6,6 +6,7 @@ use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
 use ReceiptValidator\AbstractValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
+use ReceiptValidator\iTunes\Validator as iTunesValidator;
 use ReceiptValidator\Environment;
 
 class AppStorePurchasesManager
@@ -21,7 +22,7 @@ class AppStorePurchasesManager
     protected array $validators = [];
 
     /**
-     * Create a new Cache manager instance.
+     * Create a new app store manager instance.
      */
     public function __construct(Application $app)
     {
@@ -70,6 +71,13 @@ class AppStorePurchasesManager
             environment: Environment::PRODUCTION);
     }
 
+    protected function createItunesValidator(array $config): AbstractValidator
+    {
+        return new iTunesValidator(
+            sharedSecret: $config['shared_secret'],
+            environment: Environment::PRODUCTION);
+    }
+
     /**
      * Get the cache connection configuration.
      */
@@ -84,6 +92,6 @@ class AppStorePurchasesManager
 
     public function supportedValidators(): array
     {
-        return ['apple-app-store'];
+        return ['apple-app-store', 'itunes'];
     }
 }

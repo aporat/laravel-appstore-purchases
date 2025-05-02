@@ -12,5 +12,9 @@ return [
             'bundle_id' => 'com.example',
             'environment' => Environment::SANDBOX->name,
         ],
+        'itunes' => [
+            'validator' => 'itunes',
+            'shared_secret' => 'SHARED_SECRET',
+        ],
     ],
 ];
