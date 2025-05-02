@@ -1,6 +1,6 @@
 {
     "name": "aporat/laravel-appstore-purchases",
-    "description": "Laravel integration for handling App Store purchase receipts and notifications",
+    "description": "Laravel package for handling App Store purchase receipts, subscriptions and notifications",
     "type": "library",
     "license": "MIT",
     "homepage": "https://github.com/aporat/laravel-appstore-purchases",
