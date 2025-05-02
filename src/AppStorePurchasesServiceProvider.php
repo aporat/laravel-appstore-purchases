@@ -2,22 +2,32 @@
 
 namespace Aporat\AppStorePurchases;
 
+use Illuminate\Contracts\Support\DeferrableProvider;
 use Illuminate\Support\ServiceProvider;
 
-class AppStorePurchasesServiceProvider extends ServiceProvider
+class AppStorePurchasesServiceProvider extends ServiceProvider implements DeferrableProvider
 {
     public function register(): void
     {
-        // Register bindings or config here if needed
+        $this->app->singleton('appstore-purchases', function ($app) {
+            return new AppStorePurchasesManager($app);
+        });
     }
 
     public function boot(): void
     {
-        // $this->loadRoutesFrom(__DIR__ . '/../../routes/api.php');
-        // $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
-
         $this->publishes([
             __DIR__.'/../../config/appstore-purchases.php' => config_path('appstore-purchases.php'),
         ], 'config');
+    }
+
+    /**
+     * Get the services provided by the provider.
+     */
+    public function provides(): array
+    {
+        return [
+            'appstore-purchases',
+        ];
     }
 }
