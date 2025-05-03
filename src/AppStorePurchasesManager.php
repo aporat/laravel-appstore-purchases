@@ -92,7 +92,14 @@ class AppStorePurchasesManager
     protected function getConfig(string $name): ?array
     {
         if ($name !== 'null') {
-            return $this->app['config']["appstore-purchases.validators.{$name}"];
+
+            $config = $this->app['config']["appstore-purchases.validators.{$name}"];
+
+            if (is_string($config['environment'])) {
+                $config['environment'] = Environment::fromString($config['environment']);
+            }
+
+            return $config;
         }
 
         return ['validator' => 'null'];

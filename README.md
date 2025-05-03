@@ -1,26 +1,32 @@
 # Laravel App Store Purchases
 
-Laravel package for handling App Store (Apple, iTunes, Amazon)  purchase receipts, subscriptions and notifications.
+A Laravel package for validating in-app purchase receipts, managing subscriptions, and handling server notifications from Apple, iTunes, and Amazon App Stores.
 
 [![Latest Stable Version](https://img.shields.io/packagist/v/aporat/laravel-appstore-purchases.svg?style=flat-square&logo=composer)](https://packagist.org/packages/aporat/laravel-appstore-purchases)
 [![Downloads](https://img.shields.io/packagist/dt/aporat/laravel-appstore-purchases.svg?style=flat-square&logo=composer)](https://packagist.org/packages/aporat/laravel-appstore-purchases)
 [![codecov](https://codecov.io/github/aporat/laravel-appstore-purchases/graph/badge.svg?token=D44CU2TDU8)](https://codecov.io/github/aporat/laravel-appstore-purchases)
 [![Laravel Version](https://img.shields.io/badge/Laravel-12.x-orange.svg?style=flat-square)](https://laravel.com/docs/12.x)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/aporat/laravel-appstore-purchases/ci.yml?style=flat-square)
+![GitHub Actions](https://img.shields.io/github/actions/workflow/status/aporat/laravel-appstore-purchases/ci.yml?style=flat-square)
 [![License](https://img.shields.io/packagist/l/aporat/laravel-appstore-purchases.svg?style=flat-square)](https://github.com/aporat/laravel-appstore-purchases/blob/master/LICENSE)
 
+---
 
 ## ✨ Features
 
-- Dispatches Laravel events for each notification type
-- Built-in manager for validating Apple App Store transactions
-- Easy integration with Laravel's service container
+- Dispatches Laravel events for all App Store Server Notification types
+- Built-in receipt validators for Apple and Amazon
+- Simple configuration via Laravel’s container and config files
+- Supports Apple App Store Server API (AppTransaction, Get Transaction Info, etc.)
+
+---
 
 ## 🛠 Installation
 
 ```bash
 composer require aporat/laravel-appstore-purchases
 ```
+
+---
 
 ## ⚙️ Configuration
 
@@ -30,36 +36,50 @@ Publish the config file:
 php artisan vendor:publish --tag=config --provider="Aporat\AppStorePurchases\ServiceProviders\AppStorePurchasesServiceProvider"
 ```
 
-Then edit `config/appstore-purchases.php`:
+Then update `config/appstore-purchases.php` with your store credentials:
 
 ```php
+use ReceiptValidator\Environment;
+
 return [
     'validators' => [
         'apple' => [
-            'validator' => 'appleAppStore',
-            'key_path' => base_path('resources/keys/AuthKey_ABC123XYZ.p8'),
-            'key_id' => env('APPSTORE_KEY_ID'),
-            'issuer_id' => env('APPSTORE_ISSUER_ID'),
-            'bundle_id' => env('APPSTORE_BUNDLE_ID'),
-            'environment' => \ReceiptValidator\Environment::PRODUCTION,
+            'validator' => 'apple-app-store',
+            'key_path' => app_path('../resources/keys/authkey_ABC123XYZ.p8'),
+            'key_id' => 'ABC123XYZ',
+            'issuer_id' => 'DEF456UVW',
+            'bundle_id' => 'com.example',
+            'environment' => Environment::SANDBOX->name,
+        ],
+        'itunes' => [
+            'validator' => 'itunes',
+            'shared_secret' => 'SHARED_SECRET',
+            'environment' => Environment::SANDBOX->name,
+        ],
+        'amazon' => [
+            'validator' => 'amazon',
+            'developer_secret' => 'DEVELOPER_SECRET',
+            'environment' => Environment::SANDBOX->name,
         ],
     ],
 ];
 ```
 
-## 🚀 Usage
+---
 
-### Receiving Notifications
+## 📬 Receiving Notifications
 
-Create a route in `routes/api.php`:
+Add a route to handle server notifications from Apple:
 
 ```php
 use Aporat\AppStorePurchases\Http\Controllers\AppleAppStoreServerNotificationController;
 
-Route::post('/apple/notifications', AppleAppStoreServerNotificationController::class);
+Route::prefix('server-notifications')->middleware([])->group(function () {
+    Route::post('apple-appstore-callback', AppleAppStoreServerNotificationController::class);
+});
 ```
 
-The controller will dispatch Laravel events like:
+This controller automatically dispatches Laravel events like:
 
 - `SubscriptionCreated`
 - `SubscriptionRenewed`
@@ -67,27 +87,53 @@ The controller will dispatch Laravel events like:
 - `SubscriptionRenewalChanged`
 - `ConsumptionRequest`
 
-You can listen to them in `EventServiceProvider`.
 
-### Validating a Transaction Manually
-
-```php
-$manager = app(\Aporat\AppStorePurchases\AppStorePurchasesManager::class);
-
-$response = $manager->validate('apple', $transactionId);
-
-// You can now inspect the decoded transaction info
-```
+---
 
 ## 📦 Events
 
-All App Store notification types are mapped to Laravel events. You can handle only what you need. Example:
+All App Store notification types are dispatched as Laravel events.
+
+### Example: Handling a Subscription Renewal
 
 ```php
-use Aporat\AppStorePurchases\Events\SubscriptionCreated;
+use Aporat\AppStorePurchases\Events\SubscriptionRenewed;
 
-Event::listen(SubscriptionCreated::class, function ($event) {
+Event::listen(SubscriptionRenewed::class, function ($event) {
     $transaction = $event->transaction;
-    // store or log transaction
+
+    $receipts = SubscriptionReceipt::getByTransaction($transaction->getOriginalTransactionId());
+
+    foreach ($receipts as $receipt) {
+        $account = Account::find($receipt->account_id);
+        $account->processSubscription($transaction);
+    }
 });
+```
+
+
+---
+
+## ✅ Manual Receipt Validation
+
+You can validate a transaction ID manually:
+
+```php
+$validator = AppStorePurchases::get('apple');
+$response = $validator->validate($transactionId);
+```
+
+If you have a raw app receipt, extract the transaction ID first:
+
+```php
+use Aporat\AppStorePurchases\Facades\AppStorePurchases;
+use ReceiptValidator\AppleAppStore\Validators\AppleAppStoreValidator;
+use ReceiptValidator\AppleAppStore\ReceiptUtility;
+
+$validator = AppStorePurchases::get('apple');
+
+if ($validator instanceof AppleAppStoreValidator) {
+    $transactionId = ReceiptUtility::extractTransactionIdFromAppReceipt($rawAppReceipt);
+    $response = $validator->validate($transactionId);
+}
 ```
