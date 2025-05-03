@@ -16,5 +16,9 @@ return [
             'validator' => 'itunes',
             'shared_secret' => 'SHARED_SECRET',
         ],
+        'amazon' => [
+            'validator' => 'amazon',
+            'developer_secret' => 'DEVELOPER_SECRET',
+        ],
     ],
 ];

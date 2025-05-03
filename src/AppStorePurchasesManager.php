@@ -5,6 +5,7 @@ namespace Aporat\AppStorePurchases;
 use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
 use ReceiptValidator\AbstractValidator;
+use ReceiptValidator\Amazon\Validator as AmazonValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
 use ReceiptValidator\Environment;
 use ReceiptValidator\iTunes\Validator as iTunesValidator;
@@ -78,6 +79,13 @@ class AppStorePurchasesManager
             environment: Environment::PRODUCTION);
     }
 
+    protected function createAmazonValidator(array $config): AbstractValidator
+    {
+        return new AmazonValidator(
+            developerSecret: $config['developer_secret'],
+            environment: Environment::PRODUCTION);
+    }
+
     /**
      * Get the cache connection configuration.
      */
@@ -92,6 +100,6 @@ class AppStorePurchasesManager
 
     public function supportedValidators(): array
     {
-        return ['apple-app-store', 'itunes'];
+        return ['apple-app-store', 'itunes', 'amazon'];
     }
 }
