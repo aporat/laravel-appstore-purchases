@@ -3,13 +3,13 @@
 namespace Aporat\AppStorePurchases\Events;
 
 use Illuminate\Foundation\Events\Dispatchable;
-use ReceiptValidator\AbstractTransaction;
+use ReceiptValidator\AppleAppStore\ServerNotification as AppleAppStoreServerNotification;
 
 class PurchaseEvent
 {
     use Dispatchable;
 
     public function __construct(
-        public AbstractTransaction $transaction
+        public AppleAppStoreServerNotification $notification
     ) {}
 }

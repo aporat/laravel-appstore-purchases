@@ -22,7 +22,9 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
     }
 
     /**
-     * Get the services provided by the provider.
+     * Provides the list of services offered by the application.
+     *
+     * @return array<string> Returns an array containing the provided services.
      */
     public function provides(): array
     {

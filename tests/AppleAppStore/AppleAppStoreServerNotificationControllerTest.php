@@ -1,6 +1,6 @@
 <?php
 
-namespace Aporat\AppStorePurchases\Tests;
+namespace Aporat\AppStorePurchases\Tests\AppleAppStore;
 
 use Aporat\AppStorePurchases\AppStorePurchasesServiceProvider;
 use Aporat\AppStorePurchases\Events\Test;

@@ -8,10 +8,10 @@ use ReceiptValidator\AbstractValidator;
 /**
  * @method static AbstractValidator get(string|null $name = null)
  * @method static AbstractValidator build(array $config)
- * @method static array supportedValidators()
+ * @method static AbstractValidator[] supportedValidators()
  *
  * @see \Aporat\AppStorePurchases\AppStorePurchasesManager
- * @see AbstractValidator;
+ * @see AbstractValidator
  */
 class AppStorePurchases extends Facade
 {

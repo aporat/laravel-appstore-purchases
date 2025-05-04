@@ -79,20 +79,33 @@ Route::prefix('server-notifications')->middleware([])->group(function () {
 });
 ```
 
-This controller automatically dispatches Laravel events like:
+This controller automatically dispatches Laravel events for **all Apple App Store Server Notification types**, including:
 
-- `SubscriptionCreated`
-- `SubscriptionRenewed`
-- `SubscriptionExpired`
-- `SubscriptionRenewalChanged`
 - `ConsumptionRequest`
-
+- `GracePeriodExpired`
+- `OfferRedeemed`
+- `PurchaseRefundDeclined`
+- `PurchaseRefunded`
+- `PurchaseRefundReversed`
+- `PurchaseRevoked`
+- `SubscriptionCreated`
+- `SubscriptionExpired`
+- `SubscriptionFailedToRenew`
+- `SubscriptionPriceIncrease`
+- `SubscriptionRenewalChanged`
+- `SubscriptionRenewalChangedPref`
+- `SubscriptionRenewalExtended`
+- `SubscriptionRenewalExtension`
+- `SubscriptionRenewed`
+- `ExternalPurchaseToken`
+- `OneTimeCharge`
+- `Test`
 
 ---
 
 ## 📦 Events
 
-All App Store notification types are dispatched as Laravel events.
+All App Store notification types are dispatched as Laravel events and extend a base `PurchaseEvent` class (except `Test`).
 
 ### Example: Handling a Subscription Renewal
 
@@ -100,7 +113,7 @@ All App Store notification types are dispatched as Laravel events.
 use Aporat\AppStorePurchases\Events\SubscriptionRenewed;
 
 Event::listen(SubscriptionRenewed::class, function ($event) {
-    $transaction = $event->transaction;
+    $transaction = $event->notification->getTransaction();
 
     $receipts = SubscriptionReceipt::getByTransaction($transaction->getOriginalTransactionId());
 
@@ -110,7 +123,6 @@ Event::listen(SubscriptionRenewed::class, function ($event) {
     }
 });
 ```
-
 
 ---
 

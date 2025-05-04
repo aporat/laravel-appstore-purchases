@@ -26,6 +26,7 @@
     "require-dev": {
         "orchestra/testbench": "^10.0",
         "laravel/pint": "^1.21",
+        "phpstan/phpstan": "^2.0",
         "phpunit/phpunit": "^12.0",
         "mockery/mockery": "^1.6"
     },
@@ -57,7 +58,8 @@
     "scripts": {
         "test": "phpunit",
         "test-ci": "phpunit --coverage-text --coverage-clover coverage.xml --log-junit junit.xml",
-        "check": "vendor/bin/pint --test"
+        "check": "vendor/bin/pint --test",
+        "analyze": "phpstan analyse src --level=8 --memory-limit=-1"
     },
     "support": {
         "issues": "https://github.com/aporat/laravel-appstore-purchases/issues",

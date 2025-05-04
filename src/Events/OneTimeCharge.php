@@ -2,4 +2,4 @@
 
 namespace Aporat\AppStorePurchases\Events;
 
-class Test extends PurchaseEvent {}
+class OneTimeCharge extends PurchaseEvent {}
