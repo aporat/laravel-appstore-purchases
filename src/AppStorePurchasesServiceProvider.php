@@ -9,11 +9,9 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
 {
     public function register(): void
     {
-        $this->app->singleton(AppStorePurchasesManager::class, function ($app) {
+        $this->app->singleton('appstore-purchases', function ($app) {
             return new AppStorePurchasesManager($app);
         });
-
-        $this->app->alias(AppStorePurchasesManager::class, 'appstore-purchases');
     }
 
     public function boot(): void
@@ -31,7 +29,7 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
     public function provides(): array
     {
         return [
-            AppStorePurchasesManager::class,
+            'appstore-purchases',
         ];
     }
 }
