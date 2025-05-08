@@ -64,4 +64,42 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $this->assertInstanceOf(AmazonValidator::class, $validator);
     }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function it_throws_exception_for_unsupported_validator()
+    {
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('App store validator [unsupported] is not defined.');
+
+        $manager->get('unsupported');
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function it_throws_exception_when_signing_key_file_is_missing()
+    {
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', '/invalid/path/to/key.p8');
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Signing key file does not exist at path');
+
+        $manager->get('apple-app-store');
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function it_passes_the_correct_environment()
+    {
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $itunesValidator = $manager->get('itunes');
+        $amazonValidator = $manager->get('amazon');
+        $appleValidator = $manager->get('apple-app-store');
+
+        $this->assertSame(Environment::SANDBOX, $itunesValidator->getEnvironment());
+        $this->assertSame(Environment::SANDBOX, $amazonValidator->getEnvironment());
+        $this->assertSame(Environment::SANDBOX, $appleValidator->getEnvironment());
+    }
 }

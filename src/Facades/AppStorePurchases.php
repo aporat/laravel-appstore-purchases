@@ -15,6 +15,11 @@ use ReceiptValidator\AbstractValidator;
  */
 class AppStorePurchases extends Facade
 {
+    /**
+     * Get the registered name of the component.
+     *
+     * @return string The name of the binding in the service container.
+     */
     protected static function getFacadeAccessor(): string
     {
         return 'appstore-purchases';

@@ -40,10 +40,6 @@ class AppStorePurchasesManager
     {
         $config = $this->getConfig($name);
 
-        if (is_null($config)) {
-            throw new InvalidArgumentException("App store validator [{$name}] is not defined.");
-        }
-
         return $this->build($config);
     }
 
@@ -58,6 +54,10 @@ class AppStorePurchasesManager
         if ($name !== 'null') {
 
             $config = $this->app['config']["appstore-purchases.validators.{$name}"];
+
+            if (is_null($config)) {
+                throw new InvalidArgumentException("App store validator [{$name}] is not defined.");
+            }
 
             if (is_string($config['environment'])) {
                 $config['environment'] = Environment::fromString($config['environment']);
@@ -100,18 +100,18 @@ class AppStorePurchasesManager
      */
     protected function createAppleAppStoreValidator(array $config): AbstractValidator
     {
-        $signingKey = file_get_contents($config['key_path']);
-
-        if ($signingKey === false) {
-            throw new RuntimeException("Failed to read signing key file at path: {$config['key_path']}");
+        if (! file_exists($config['key_path'])) {
+            throw new RuntimeException("Signing key file does not exist at path: {$config['key_path']}");
         }
+
+        $signingKey = file_get_contents($config['key_path']);
 
         return new AppleAppStoreValidator(
             signingKey: $signingKey,
             keyId: $config['key_id'],
             issuerId: $config['issuer_id'],
             bundleId: $config['bundle_id'],
-            environment: Environment::PRODUCTION);
+            environment: $config['environment']);
     }
 
     /**
@@ -121,7 +121,7 @@ class AppStorePurchasesManager
     {
         return new iTunesValidator(
             sharedSecret: $config['shared_secret'],
-            environment: Environment::PRODUCTION);
+            environment: $config['environment']);
     }
 
     /**
@@ -131,6 +131,6 @@ class AppStorePurchasesManager
     {
         return new AmazonValidator(
             developerSecret: $config['developer_secret'],
-            environment: Environment::PRODUCTION);
+            environment: $config['environment']);
     }
 }
