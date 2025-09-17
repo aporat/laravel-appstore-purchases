@@ -15,7 +15,7 @@ class AppleAppStoreServerNotificationControllerTest extends TestCase
     {
         parent::setUp();
 
-        Route::post('/apple/notifications', AppleAppStoreServerNotificationController::class);
+        Route::middleware('api')->post('/apple/notifications', AppleAppStoreServerNotificationController::class);
 
         Event::fake([Test::class]);
     }
@@ -23,7 +23,9 @@ class AppleAppStoreServerNotificationControllerTest extends TestCase
     public function test_dispatches_test_event(): void
     {
         $json = file_get_contents(__DIR__.'/fixtures/test-notification-signed-payload.json');
-        $payload = json_decode($json, true);
+        $this->assertNotFalse($json, 'Fixture missing or unreadable');
+
+        $payload = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
 
         $this->postJson('/apple/notifications', $payload)->assertNoContent();
 

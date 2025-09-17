@@ -33,6 +33,11 @@ class AppStorePurchasesManagerTest extends TestCase
             'developer_secret' => 'DEVELOPER_SECRET',
             'environment' => Environment::SANDBOX,
         ]);
+
+        $app['config']->set('appstore-purchases.validators.unsupported', [
+            'validator' => 'unsupported',
+            'environment' => Environment::SANDBOX,
+        ]);
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
@@ -71,7 +76,7 @@ class AppStorePurchasesManagerTest extends TestCase
         $manager = new AppStorePurchasesManager($this->app);
 
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('App store validator [unsupported] is not defined.');
+        $this->expectExceptionMessage('Validator [unsupported] is not supported.');
 
         $manager->get('unsupported');
     }

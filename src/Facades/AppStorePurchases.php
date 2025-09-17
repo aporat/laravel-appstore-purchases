@@ -1,24 +1,29 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Aporat\AppStorePurchases\Facades;
 
+use Aporat\AppStorePurchases\AppStorePurchasesManager;
 use Illuminate\Support\Facades\Facade;
 use ReceiptValidator\AbstractValidator;
 
 /**
+ * Facade for the App Store Purchases manager.
+ *
  * @method static AbstractValidator get(string|null $name = null)
  * @method static AbstractValidator build(array $config)
- * @method static AbstractValidator[] supportedValidators()
+ * @method static array<int, AbstractValidator> supportedValidators()
  *
- * @see \Aporat\AppStorePurchases\AppStorePurchasesManager
+ * @see AppStorePurchasesManager
  * @see AbstractValidator
+ *
+ * @mixin AppStorePurchasesManager
  */
-class AppStorePurchases extends Facade
+final class AppStorePurchases extends Facade
 {
     /**
      * Get the registered name of the component.
-     *
-     * @return string The name of the binding in the service container.
      */
     protected static function getFacadeAccessor(): string
     {

@@ -47,12 +47,11 @@ class AppStorePurchasesManager
      * Retrieves the configuration array for the given validator name.
      *
      * @param  string  $name  The name of the validator.
-     * @return array<string, mixed>|null The configuration array for the specified validator, or null if not found.
+     * @return array<string, mixed>|null
      */
     protected function getConfig(string $name): ?array
     {
         if ($name !== 'null') {
-
             $config = $this->app['config']["appstore-purchases.validators.{$name}"];
 
             if (is_null($config)) {
@@ -88,7 +87,7 @@ class AppStorePurchasesManager
     /**
      * Retrieves a list of supported validators.
      *
-     * @return array<string> An array containing the supported validator names.
+     * @return array<string>
      */
     public function supportedValidators(): array
     {
@@ -104,6 +103,10 @@ class AppStorePurchasesManager
             throw new RuntimeException("Signing key file does not exist at path: {$config['key_path']}");
         }
 
+        if (! is_readable($config['key_path'])) {
+            throw new RuntimeException("Signing key file is not readable at path: {$config['key_path']}");
+        }
+
         $signingKey = file_get_contents($config['key_path']);
 
         return new AppleAppStoreValidator(
@@ -111,7 +114,8 @@ class AppStorePurchasesManager
             keyId: $config['key_id'],
             issuerId: $config['issuer_id'],
             bundleId: $config['bundle_id'],
-            environment: $config['environment']);
+            environment: $config['environment']
+        );
     }
 
     /**
@@ -121,7 +125,8 @@ class AppStorePurchasesManager
     {
         return new iTunesValidator(
             sharedSecret: $config['shared_secret'],
-            environment: $config['environment']);
+            environment: $config['environment']
+        );
     }
 
     /**
@@ -131,6 +136,7 @@ class AppStorePurchasesManager
     {
         return new AmazonValidator(
             developerSecret: $config['developer_secret'],
-            environment: $config['environment']);
+            environment: $config['environment']
+        );
     }
 }

@@ -12,19 +12,21 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
         $this->app->singleton('appstore-purchases', function ($app) {
             return new AppStorePurchasesManager($app);
         });
+
+        $this->mergeConfigFrom(__DIR__.'/../config/appstore-purchases.php', 'appstore-purchases');
     }
 
     public function boot(): void
     {
         $this->publishes([
-            __DIR__.'/../../config/appstore-purchases.php' => config_path('appstore-purchases.php'),
+            __DIR__.'/../config/appstore-purchases.php' => config_path('appstore-purchases.php'),
         ], 'config');
     }
 
     /**
      * Provides the list of services offered by the application.
      *
-     * @return array<string> Returns an array containing the provided services.
+     * @return array<string>
      */
     public function provides(): array
     {
