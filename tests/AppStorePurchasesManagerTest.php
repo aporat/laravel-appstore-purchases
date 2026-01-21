@@ -14,7 +14,7 @@ class AppStorePurchasesManagerTest extends TestCase
     protected function getEnvironmentSetUp($app): void
     {
         $app['config']->set('appstore-purchases.validators.apple-app-store', [
-            'validator' => 'appleAppStore',
+            'validator' => 'apple-app-store',
             'key_path' => __DIR__.'/AppleAppStore/certs/testSigningKey.p8',
             'key_id' => 'TESTKEY123',
             'issuer_id' => 'ISSUER123',

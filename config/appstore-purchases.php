@@ -10,17 +10,17 @@ return [
             'key_id' => 'ABC123XYZ',
             'issuer_id' => 'DEF456UVW',
             'bundle_id' => 'com.example',
-            'environment' => Environment::SANDBOX->name,
+            'environment' => Environment::SANDBOX,
         ],
         'itunes' => [
             'validator' => 'itunes',
             'shared_secret' => 'SHARED_SECRET',
-            'environment' => Environment::SANDBOX->name,
+            'environment' => Environment::SANDBOX,
         ],
         'amazon' => [
             'validator' => 'amazon',
             'developer_secret' => 'DEVELOPER_SECRET',
-            'environment' => Environment::SANDBOX->name,
+            'environment' => Environment::SANDBOX,
         ],
     ],
 ];
