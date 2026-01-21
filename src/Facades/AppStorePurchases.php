@@ -11,9 +11,9 @@ use ReceiptValidator\AbstractValidator;
 /**
  * Facade for the App Store Purchases manager.
  *
- * @method static AbstractValidator get(string|null $name = null)
+ * @method static AbstractValidator get(string $name)
  * @method static AbstractValidator build(array $config)
- * @method static array<int, AbstractValidator> supportedValidators()
+ * @method static array<string> supportedValidators()
  *
  * @see AppStorePurchasesManager
  * @see AbstractValidator

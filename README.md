@@ -33,7 +33,7 @@ composer require aporat/laravel-appstore-purchases
 Publish the config file:
 
 ```bash
-php artisan vendor:publish --tag=config --provider="Aporat\AppStorePurchases\ServiceProviders\AppStorePurchasesServiceProvider"
+php artisan vendor:publish --tag=config --provider="Aporat\AppStorePurchases\AppStorePurchasesServiceProvider"
 ```
 
 Then update `config/appstore-purchases.php` with your store credentials:
@@ -49,17 +49,17 @@ return [
             'key_id' => 'ABC123XYZ',
             'issuer_id' => 'DEF456UVW',
             'bundle_id' => 'com.example',
-            'environment' => Environment::SANDBOX->name,
+            'environment' => Environment::SANDBOX,
         ],
         'itunes' => [
             'validator' => 'itunes',
             'shared_secret' => 'SHARED_SECRET',
-            'environment' => Environment::SANDBOX->name,
+            'environment' => Environment::SANDBOX,
         ],
         'amazon' => [
             'validator' => 'amazon',
             'developer_secret' => 'DEVELOPER_SECRET',
-            'environment' => Environment::SANDBOX->name,
+            'environment' => Environment::SANDBOX,
         ],
     ],
 ];
@@ -75,6 +75,14 @@ Add a route to handle server notifications from Apple:
 use Aporat\AppStorePurchases\Http\Controllers\AppleAppStoreServerNotificationController;
 
 Route::prefix('server-notifications')->middleware([])->group(function () {
+    Route::post('apple-appstore-callback', AppleAppStoreServerNotificationController::class);
+});
+```
+
+**Security Recommendation**: Add rate limiting middleware to the notification endpoint to prevent abuse:
+
+```php
+Route::prefix('server-notifications')->middleware(['throttle:60,1'])->group(function () {
     Route::post('apple-appstore-callback', AppleAppStoreServerNotificationController::class);
 });
 ```
@@ -105,7 +113,7 @@ This controller automatically dispatches Laravel events for **all Apple App Stor
 
 ## 📦 Events
 
-All App Store notification types are dispatched as Laravel events and extend a base `PurchaseEvent` class (except `Test`).
+All App Store notification types are dispatched as Laravel events and extend a base `PurchaseEvent` class.
 
 ### Example: Handling a Subscription Renewal
 

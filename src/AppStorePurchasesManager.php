@@ -47,9 +47,9 @@ class AppStorePurchasesManager
      * Retrieves the configuration array for the given validator name.
      *
      * @param  string  $name  The name of the validator.
-     * @return array<string, mixed>|null
+     * @return array<string, mixed>
      */
-    protected function getConfig(string $name): ?array
+    protected function getConfig(string $name): array
     {
         if ($name !== 'null') {
             $config = $this->app['config']["appstore-purchases.validators.{$name}"];
@@ -75,7 +75,7 @@ class AppStorePurchasesManager
      */
     public function build(array $config): AbstractValidator
     {
-        $validatorMethod = 'create'.ucwords($config['validator']).'Validator';
+        $validatorMethod = 'create'.str_replace('-', '', ucwords($config['validator'], '-')).'Validator';
 
         if (method_exists($this, $validatorMethod)) {
             return $this->{$validatorMethod}($config);
@@ -108,6 +108,10 @@ class AppStorePurchasesManager
         }
 
         $signingKey = file_get_contents($config['key_path']);
+
+        if ($signingKey === false) {
+            throw new RuntimeException("Failed to read signing key file at path: {$config['key_path']}");
+        }
 
         return new AppleAppStoreValidator(
             signingKey: $signingKey,
