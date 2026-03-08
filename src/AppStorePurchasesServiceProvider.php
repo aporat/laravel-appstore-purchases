@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Aporat\AppStorePurchases;
 
 use Illuminate\Contracts\Support\DeferrableProvider;

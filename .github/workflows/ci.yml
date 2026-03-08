@@ -53,6 +53,9 @@ jobs:
       - name: Execute linter
         run: composer check
 
+      - name: Execute static analysis
+        run: composer analyze
+
       - name: Execute tests (Unit and Feature tests) via PHPUnit
         if: matrix.coverage == 'none'
         run: composer test
