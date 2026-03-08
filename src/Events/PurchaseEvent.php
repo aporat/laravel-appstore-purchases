@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Aporat\AppStorePurchases\Events;
 
 use Illuminate\Foundation\Events\Dispatchable;
@@ -10,6 +12,6 @@ class PurchaseEvent
     use Dispatchable;
 
     public function __construct(
-        public AppleAppStoreServerNotification $notification
+        public readonly AppleAppStoreServerNotification $notification
     ) {}
 }

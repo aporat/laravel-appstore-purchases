@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Aporat\AppStorePurchases;
 
 use Illuminate\Contracts\Foundation\Application;
@@ -51,21 +53,17 @@ class AppStorePurchasesManager
      */
     protected function getConfig(string $name): array
     {
-        if ($name !== 'null') {
-            $config = $this->app['config']["appstore-purchases.validators.{$name}"];
+        $config = $this->app['config']["appstore-purchases.validators.{$name}"];
 
-            if (is_null($config)) {
-                throw new InvalidArgumentException("App store validator [{$name}] is not defined.");
-            }
-
-            if (is_string($config['environment'])) {
-                $config['environment'] = Environment::fromString($config['environment']);
-            }
-
-            return $config;
+        if (is_null($config)) {
+            throw new InvalidArgumentException("App store validator [{$name}] is not defined.");
         }
 
-        return ['validator' => 'null'];
+        if (is_string($config['environment'])) {
+            $config['environment'] = Environment::fromString($config['environment']);
+        }
+
+        return $config;
     }
 
     /**
