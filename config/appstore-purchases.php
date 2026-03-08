@@ -1,7 +1,5 @@
 <?php
 
-use ReceiptValidator\Environment;
-
 return [
     'validators' => [
         'apple' => [
