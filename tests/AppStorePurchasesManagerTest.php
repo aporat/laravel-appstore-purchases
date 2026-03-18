@@ -4,6 +4,7 @@ namespace Aporat\AppStorePurchases\Tests;
 
 use Aporat\AppStorePurchases\AppStorePurchasesManager;
 use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\Attributes\Test;
 use ReceiptValidator\Amazon\Validator as AmazonValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleValidator;
 use ReceiptValidator\Environment;
@@ -40,7 +41,7 @@ class AppStorePurchasesManagerTest extends TestCase
         ]);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_resolves_apple_app_store_validator()
     {
         $manager = new AppStorePurchasesManager($this->app);
@@ -50,7 +51,7 @@ class AppStorePurchasesManagerTest extends TestCase
         $this->assertInstanceOf(AppleValidator::class, $validator);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_resolves_itunes_validator()
     {
         $manager = new AppStorePurchasesManager($this->app);
@@ -60,7 +61,7 @@ class AppStorePurchasesManagerTest extends TestCase
         $this->assertInstanceOf(iTunesValidator::class, $validator);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_resolves_amazon_validator()
     {
         $manager = new AppStorePurchasesManager($this->app);
@@ -70,7 +71,7 @@ class AppStorePurchasesManagerTest extends TestCase
         $this->assertInstanceOf(AmazonValidator::class, $validator);
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_throws_exception_for_unsupported_validator()
     {
         $manager = new AppStorePurchasesManager($this->app);
@@ -81,7 +82,7 @@ class AppStorePurchasesManagerTest extends TestCase
         $manager->get('unsupported');
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_throws_exception_when_signing_key_file_is_missing()
     {
         $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', '/invalid/path/to/key.p8');
@@ -94,7 +95,7 @@ class AppStorePurchasesManagerTest extends TestCase
         $manager->get('apple-app-store');
     }
 
-    #[\PHPUnit\Framework\Attributes\Test]
+    #[Test]
     public function it_passes_the_correct_environment()
     {
         $manager = new AppStorePurchasesManager($this->app);
