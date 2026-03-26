@@ -6,6 +6,7 @@ namespace Aporat\AppStorePurchases;
 
 use Illuminate\Contracts\Foundation\Application;
 use InvalidArgumentException;
+use Psr\Log\LoggerInterface;
 use ReceiptValidator\AbstractValidator;
 use ReceiptValidator\Amazon\Validator as AmazonValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
@@ -76,10 +77,36 @@ class AppStorePurchasesManager
         $validatorMethod = 'create'.str_replace('-', '', ucwords($config['validator'], '-')).'Validator';
 
         if (method_exists($this, $validatorMethod)) {
-            return $this->{$validatorMethod}($config);
+            $validator = $this->{$validatorMethod}($config);
+
+            if ($logger = $this->resolveLogger($config)) {
+                $validator->setLogger($logger);
+            }
+
+            return $validator;
         }
 
         throw new InvalidArgumentException("Validator [{$config['validator']}] is not supported.");
+    }
+
+    /**
+     * Resolve a PSR-3 logger for the given validator config.
+     *
+     * Checks the per-validator 'log_channel' key first, then falls back to the
+     * global 'appstore-purchases.logging.channel' config value. Returns null
+     * when no channel is configured, leaving the validator's NullLogger in place.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    protected function resolveLogger(array $config): ?LoggerInterface
+    {
+        $channel = $config['log_channel'] ?? $this->app['config']['appstore-purchases.logging.channel'] ?? null;
+
+        if (! is_string($channel) || $channel === '') {
+            return null;
+        }
+
+        return $this->app->make('log')->channel($channel);
     }
 
     /**

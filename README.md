@@ -17,6 +17,7 @@ A Laravel package for validating in-app purchase receipts, managing subscription
 - Built-in receipt validators for Apple and Amazon
 - Simple configuration via Laravel’s container and config files
 - Supports Apple App Store Server API (AppTransaction, Get Transaction Info, etc.)
+- Optional PSR-3 request/response logging via any Laravel log channel
 
 ---
 
@@ -63,6 +64,39 @@ return [
         ],
     ],
 ];
+```
+
+---
+
+## 🪵 Logging
+
+Logging is disabled by default. To enable it, set the `APPSTORE_LOG_CHANNEL` environment variable to any Laravel log channel name:
+
+```env
+APPSTORE_LOG_CHANNEL=stack
+```
+
+This applies to all validators. When enabled, the underlying HTTP client emits structured log entries at the following levels:
+
+| Level | When |
+|-------|------|
+| `debug` | Outgoing request details (method, URI, environment, query params) |
+| `info` | Successful responses |
+| `warning` | API error responses (non-2xx with an error body) |
+| `error` | Connection failures and exceptions |
+
+### Per-validator channel
+
+You can also set a different log channel for an individual validator by adding a `log_channel` key to its config. This takes precedence over the global setting:
+
+```php
+'validators' => [
+    'apple' => [
+        'validator'   => 'apple-app-store',
+        'log_channel' => 'daily',   // overrides APPSTORE_LOG_CHANNEL for this validator
+        // ...
+    ],
+],
 ```
 
 ---

@@ -1,6 +1,23 @@
 <?php
 
 return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Logging
+    |--------------------------------------------------------------------------
+    |
+    | Set a log channel name to enable PSR-3 request/response logging on all
+    | validators (e.g. 'stack', 'daily', 'stderr'). Set to null to disable
+    | logging entirely (the default). Individual validators can override this
+    | with their own 'log_channel' key.
+    |
+    */
+
+    'logging' => [
+        'channel' => env('APPSTORE_LOG_CHANNEL'),
+    ],
+
     'validators' => [
         'apple' => [
             'validator' => 'apple-app-store',

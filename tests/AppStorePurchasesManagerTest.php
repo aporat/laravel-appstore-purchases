@@ -3,8 +3,11 @@
 namespace Aporat\AppStorePurchases\Tests;
 
 use Aporat\AppStorePurchases\AppStorePurchasesManager;
+use Illuminate\Log\LogManager;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\Test;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use ReceiptValidator\Amazon\Validator as AmazonValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleValidator;
 use ReceiptValidator\Environment;
@@ -107,5 +110,75 @@ class AppStorePurchasesManagerTest extends TestCase
         $this->assertSame(Environment::SANDBOX, $itunesValidator->getEnvironment());
         $this->assertSame(Environment::SANDBOX, $amazonValidator->getEnvironment());
         $this->assertSame(Environment::SANDBOX, $appleValidator->getEnvironment());
+    }
+
+    #[Test]
+    public function it_uses_null_logger_when_no_log_channel_is_configured()
+    {
+        $manager = new AppStorePurchasesManager($this->app);
+        $validator = $manager->get('itunes');
+
+        $logger = (new \ReflectionProperty($validator, 'logger'))->getValue($validator);
+
+        $this->assertInstanceOf(NullLogger::class, $logger);
+    }
+
+    #[Test]
+    public function it_injects_logger_when_global_log_channel_is_configured()
+    {
+        $this->app['config']->set('appstore-purchases.logging.channel', 'single');
+
+        $manager = new AppStorePurchasesManager($this->app);
+        $validator = $manager->get('itunes');
+
+        $logger = (new \ReflectionProperty($validator, 'logger'))->getValue($validator);
+
+        $this->assertInstanceOf(LoggerInterface::class, $logger);
+        $this->assertNotInstanceOf(NullLogger::class, $logger);
+    }
+
+    #[Test]
+    public function it_injects_logger_when_per_validator_log_channel_is_configured()
+    {
+        $this->app['config']->set('appstore-purchases.validators.itunes.log_channel', 'single');
+
+        $manager = new AppStorePurchasesManager($this->app);
+        $validator = $manager->get('itunes');
+
+        $logger = (new \ReflectionProperty($validator, 'logger'))->getValue($validator);
+
+        $this->assertInstanceOf(LoggerInterface::class, $logger);
+        $this->assertNotInstanceOf(NullLogger::class, $logger);
+    }
+
+    #[Test]
+    public function it_per_validator_log_channel_overrides_global_channel()
+    {
+        $this->app['config']->set('appstore-purchases.logging.channel', 'stack');
+        $this->app['config']->set('appstore-purchases.validators.itunes.log_channel', 'single');
+
+        $logManager = $this->createMock(LogManager::class);
+        $logManager->expects($this->once())
+            ->method('channel')
+            ->with('single')
+            ->willReturn($this->createStub(LoggerInterface::class));
+
+        $this->app->instance('log', $logManager);
+
+        $manager = new AppStorePurchasesManager($this->app);
+        $manager->get('itunes');
+    }
+
+    #[Test]
+    public function it_does_not_inject_logger_when_log_channel_is_empty_string()
+    {
+        $this->app['config']->set('appstore-purchases.logging.channel', '');
+
+        $manager = new AppStorePurchasesManager($this->app);
+        $validator = $manager->get('itunes');
+
+        $logger = (new \ReflectionProperty($validator, 'logger'))->getValue($validator);
+
+        $this->assertInstanceOf(NullLogger::class, $logger);
     }
 }
