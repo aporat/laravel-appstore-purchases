@@ -60,6 +60,14 @@ class AppStorePurchasesManager
             throw new InvalidArgumentException("App store validator [{$name}] is not defined.");
         }
 
+        if (! isset($config['validator']) || ! is_string($config['validator'])) {
+            throw new InvalidArgumentException("App store validator [{$name}] is missing required 'validator' key.");
+        }
+
+        if (! array_key_exists('environment', $config)) {
+            throw new InvalidArgumentException("App store validator [{$name}] is missing required 'environment' key.");
+        }
+
         if (is_string($config['environment'])) {
             $config['environment'] = Environment::fromString($config['environment']);
         }
@@ -124,6 +132,12 @@ class AppStorePurchasesManager
      */
     protected function createAppleAppStoreValidator(array $config): AbstractValidator
     {
+        foreach (['key_path', 'key_id', 'issuer_id', 'bundle_id'] as $key) {
+            if (! isset($config[$key]) || ! is_string($config[$key]) || $config[$key] === '') {
+                throw new InvalidArgumentException("Apple App Store validator config is missing required '{$key}'.");
+            }
+        }
+
         if (! file_exists($config['key_path'])) {
             throw new RuntimeException("Signing key file does not exist at path: {$config['key_path']}");
         }
@@ -152,6 +166,10 @@ class AppStorePurchasesManager
      */
     protected function createItunesValidator(array $config): AbstractValidator
     {
+        if (! isset($config['shared_secret']) || ! is_string($config['shared_secret']) || $config['shared_secret'] === '') {
+            throw new InvalidArgumentException("iTunes validator config is missing required 'shared_secret'.");
+        }
+
         return new iTunesValidator(
             sharedSecret: $config['shared_secret'],
             environment: $config['environment']
@@ -163,6 +181,10 @@ class AppStorePurchasesManager
      */
     protected function createAmazonValidator(array $config): AbstractValidator
     {
+        if (! isset($config['developer_secret']) || ! is_string($config['developer_secret']) || $config['developer_secret'] === '') {
+            throw new InvalidArgumentException("Amazon validator config is missing required 'developer_secret'.");
+        }
+
         return new AmazonValidator(
             developerSecret: $config['developer_secret'],
             environment: $config['environment']

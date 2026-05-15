@@ -35,33 +35,8 @@ final class AppleAppStoreServerNotificationController
     {
         try {
             $notification = new AppleAppStoreServerNotification($request->all());
-
-            match ($notification->getNotificationType()) {
-                AppleAppStoreServerNotificationType::CONSUMPTION_REQUEST => event(new ConsumptionRequest($notification)),
-                AppleAppStoreServerNotificationType::GRACE_PERIOD_EXPIRED => event(new GracePeriodExpired($notification)),
-                AppleAppStoreServerNotificationType::OFFER_REDEEMED => event(new OfferRedeemed($notification)),
-                AppleAppStoreServerNotificationType::REFUND_DECLINED => event(new PurchaseRefundDeclined($notification)),
-                AppleAppStoreServerNotificationType::REFUND_REVERSED => event(new PurchaseRefundReversed($notification)),
-                AppleAppStoreServerNotificationType::SUBSCRIBED => event(new SubscriptionCreated($notification)),
-                AppleAppStoreServerNotificationType::EXPIRED => event(new SubscriptionExpired($notification)),
-                AppleAppStoreServerNotificationType::DID_CHANGE_RENEWAL_STATUS => event(new SubscriptionRenewalChanged($notification)),
-                AppleAppStoreServerNotificationType::DID_RENEW => event(new SubscriptionRenewed($notification)),
-                AppleAppStoreServerNotificationType::TEST => event(new Test($notification)),
-                AppleAppStoreServerNotificationType::DID_FAIL_TO_RENEW => event(new SubscriptionFailedToRenew($notification)),
-                AppleAppStoreServerNotificationType::PRICE_INCREASE => event(new SubscriptionPriceIncrease($notification)),
-                AppleAppStoreServerNotificationType::REFUND => event(new PurchaseRefunded($notification)),
-                AppleAppStoreServerNotificationType::RENEWAL_EXTENDED => event(new SubscriptionRenewalExtended($notification)),
-                AppleAppStoreServerNotificationType::REVOKE => event(new PurchaseRevoked($notification)),
-                AppleAppStoreServerNotificationType::EXTERNAL_PURCHASE_TOKEN => event(new ExternalPurchaseToken($notification)),
-                AppleAppStoreServerNotificationType::ONE_TIME_CHARGE => event(new OneTimeCharge($notification)),
-                AppleAppStoreServerNotificationType::DID_CHANGE_RENEWAL_PREF => event(new SubscriptionRenewalChangedPref($notification)),
-                AppleAppStoreServerNotificationType::RENEWAL_EXTENSION => event(new SubscriptionRenewalExtension($notification)),
-                default => null,
-            };
-
-            return new Response(null, Response::HTTP_NO_CONTENT);
         } catch (\Throwable $e) {
-            Log::error('Failed to process Apple App Store server notification', [
+            Log::error('Failed to decode Apple App Store server notification payload', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'request' => $request->all(),
@@ -69,5 +44,42 @@ final class AppleAppStoreServerNotificationController
 
             return new Response(null, Response::HTTP_BAD_REQUEST);
         }
+
+        $event = match ($notification->getNotificationType()) {
+            AppleAppStoreServerNotificationType::CONSUMPTION_REQUEST => new ConsumptionRequest($notification),
+            AppleAppStoreServerNotificationType::GRACE_PERIOD_EXPIRED => new GracePeriodExpired($notification),
+            AppleAppStoreServerNotificationType::OFFER_REDEEMED => new OfferRedeemed($notification),
+            AppleAppStoreServerNotificationType::REFUND_DECLINED => new PurchaseRefundDeclined($notification),
+            AppleAppStoreServerNotificationType::REFUND_REVERSED => new PurchaseRefundReversed($notification),
+            AppleAppStoreServerNotificationType::SUBSCRIBED => new SubscriptionCreated($notification),
+            AppleAppStoreServerNotificationType::EXPIRED => new SubscriptionExpired($notification),
+            AppleAppStoreServerNotificationType::DID_CHANGE_RENEWAL_STATUS => new SubscriptionRenewalChanged($notification),
+            AppleAppStoreServerNotificationType::DID_RENEW => new SubscriptionRenewed($notification),
+            AppleAppStoreServerNotificationType::TEST => new Test($notification),
+            AppleAppStoreServerNotificationType::DID_FAIL_TO_RENEW => new SubscriptionFailedToRenew($notification),
+            AppleAppStoreServerNotificationType::PRICE_INCREASE => new SubscriptionPriceIncrease($notification),
+            AppleAppStoreServerNotificationType::REFUND => new PurchaseRefunded($notification),
+            AppleAppStoreServerNotificationType::RENEWAL_EXTENDED => new SubscriptionRenewalExtended($notification),
+            AppleAppStoreServerNotificationType::REVOKE => new PurchaseRevoked($notification),
+            AppleAppStoreServerNotificationType::EXTERNAL_PURCHASE_TOKEN => new ExternalPurchaseToken($notification),
+            AppleAppStoreServerNotificationType::ONE_TIME_CHARGE => new OneTimeCharge($notification),
+            AppleAppStoreServerNotificationType::DID_CHANGE_RENEWAL_PREF => new SubscriptionRenewalChangedPref($notification),
+            AppleAppStoreServerNotificationType::RENEWAL_EXTENSION => new SubscriptionRenewalExtension($notification),
+            default => null,
+        };
+
+        if ($event !== null) {
+            try {
+                event($event);
+            } catch (\Throwable $e) {
+                Log::error('Apple App Store server notification listener threw an exception', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                    'notification_type' => $notification->getNotificationType()?->value,
+                ]);
+            }
+        }
+
+        return new Response(null, Response::HTTP_NO_CONTENT);
     }
 }
