@@ -70,6 +70,8 @@ class AppStorePurchasesManager
 
         if (is_string($config['environment'])) {
             $config['environment'] = Environment::fromString($config['environment']);
+        } elseif (! $config['environment'] instanceof Environment) {
+            throw new InvalidArgumentException("App store validator [{$name}] 'environment' must be a string or Environment instance.");
         }
 
         return $config;

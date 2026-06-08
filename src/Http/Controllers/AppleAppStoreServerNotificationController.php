@@ -38,8 +38,7 @@ final class AppleAppStoreServerNotificationController
         } catch (\Throwable $e) {
             Log::error('Failed to decode Apple App Store server notification payload', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'request' => $request->all(),
+                'payload_size' => strlen((string) $request->getContent()),
             ]);
 
             return new Response(null, Response::HTTP_BAD_REQUEST);
@@ -68,15 +67,23 @@ final class AppleAppStoreServerNotificationController
             default => null,
         };
 
-        if ($event !== null) {
+        if ($event === null) {
+            Log::warning('Apple App Store server notification type has no mapped event', [
+                'notification_type' => $notification->getNotificationType()->value,
+                'notification_uuid' => $notification->getNotificationUUID(),
+            ]);
+        } else {
             try {
                 event($event);
             } catch (\Throwable $e) {
                 Log::error('Apple App Store server notification listener threw an exception', [
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
-                    'notification_type' => $notification->getNotificationType()?->value,
+                    'notification_type' => $notification->getNotificationType()->value,
+                    'notification_uuid' => $notification->getNotificationUUID(),
                 ]);
+
+                return new Response(null, Response::HTTP_INTERNAL_SERVER_ERROR);
             }
         }
 
