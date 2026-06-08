@@ -181,4 +181,125 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $this->assertInstanceOf(NullLogger::class, $logger);
     }
+
+    #[Test]
+    public function it_caches_resolved_validators()
+    {
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->assertSame($manager->get('itunes'), $manager->get('itunes'));
+    }
+
+    #[Test]
+    public function it_converts_string_environment_to_enum()
+    {
+        $this->app['config']->set('appstore-purchases.validators.itunes.environment', 'production');
+
+        $manager = new AppStorePurchasesManager($this->app);
+        $validator = $manager->get('itunes');
+
+        $this->assertSame(Environment::PRODUCTION, $validator->getEnvironment());
+    }
+
+    #[Test]
+    public function it_throws_when_environment_is_neither_string_nor_environment_instance()
+    {
+        $this->app['config']->set('appstore-purchases.validators.itunes.environment', null);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("'environment' must be a string or Environment instance");
+
+        $manager->get('itunes');
+    }
+
+    #[Test]
+    public function it_throws_when_validator_name_is_undefined()
+    {
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('App store validator [missing] is not defined.');
+
+        $manager->get('missing');
+    }
+
+    #[Test]
+    public function it_throws_when_validator_key_is_missing()
+    {
+        $this->app['config']->set('appstore-purchases.validators.broken', [
+            'environment' => Environment::SANDBOX,
+        ]);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("missing required 'validator' key");
+
+        $manager->get('broken');
+    }
+
+    #[Test]
+    public function it_throws_when_environment_key_is_missing()
+    {
+        $this->app['config']->set('appstore-purchases.validators.broken', [
+            'validator' => 'itunes',
+            'shared_secret' => 'SECRET',
+        ]);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("missing required 'environment' key");
+
+        $manager->get('broken');
+    }
+
+    #[Test]
+    public function it_throws_when_itunes_shared_secret_is_missing()
+    {
+        $this->app['config']->set('appstore-purchases.validators.itunes.shared_secret', '');
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("iTunes validator config is missing required 'shared_secret'");
+
+        $manager->get('itunes');
+    }
+
+    #[Test]
+    public function it_throws_when_amazon_developer_secret_is_missing()
+    {
+        $this->app['config']->set('appstore-purchases.validators.amazon.developer_secret', '');
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Amazon validator config is missing required 'developer_secret'");
+
+        $manager->get('amazon');
+    }
+
+    #[Test]
+    public function it_throws_when_apple_required_key_is_missing()
+    {
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.bundle_id', '');
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("Apple App Store validator config is missing required 'bundle_id'");
+
+        $manager->get('apple-app-store');
+    }
+
+    #[Test]
+    public function it_exposes_supported_validators()
+    {
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->assertSame(['apple-app-store', 'itunes', 'amazon'], $manager->supportedValidators());
+    }
 }
