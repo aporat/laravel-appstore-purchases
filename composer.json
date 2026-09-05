@@ -1,6 +1,6 @@
 {
   "name": "aporat/laravel-appstore-purchases",
-  "description": "Laravel package for handling App Store purchase receipts, subscriptions and notifications",
+  "description": "Laravel package for handling App Store and Google Play purchase receipts, subscriptions and notifications",
   "type": "library",
   "license": "MIT",
   "homepage": "https://github.com/aporat/laravel-appstore-purchases",
@@ -9,6 +9,8 @@
     "app store",
     "apple",
     "amazon",
+    "android",
+    "google play",
     "itunes",
     "in-app purchase",
     "subscription",
@@ -36,6 +38,9 @@
     "phpstan/phpstan": "^2.0",
     "phpunit/phpunit": "^12.0 || ^13.0",
     "mockery/mockery": "^1.6"
+  },
+  "suggest": {
+    "google/auth": "Required to verify the OIDC token on Google Play RTDN Pub/Sub pushes (GoogleOidcPushVerifier)"
   },
   "autoload": {
     "psr-4": {

@@ -45,6 +45,6 @@ class AppStorePurchasesFacadeTest extends TestCase
     #[Test]
     public function it_proxies_supported_validators(): void
     {
-        $this->assertSame(['apple-app-store', 'itunes', 'amazon'], AppStorePurchases::supportedValidators());
+        $this->assertSame(['apple-app-store', 'itunes', 'amazon', 'google-play'], AppStorePurchases::supportedValidators());
     }
 }

@@ -1,6 +1,6 @@
 # Laravel App Store Purchases
 
-A Laravel package for validating in-app purchase receipts, managing subscriptions, and handling server notifications from Apple, iTunes, and Amazon App Stores.
+A Laravel package for validating in-app purchase receipts, managing subscriptions, and handling server notifications from the Apple App Store, iTunes, Google Play, and Amazon Appstore.
 
 [![Latest Stable Version](https://img.shields.io/packagist/v/aporat/laravel-appstore-purchases.svg?style=flat-square&logo=composer)](https://packagist.org/packages/aporat/laravel-appstore-purchases)
 [![Downloads](https://img.shields.io/packagist/dt/aporat/laravel-appstore-purchases.svg?style=flat-square&logo=composer)](https://packagist.org/packages/aporat/laravel-appstore-purchases)
@@ -14,7 +14,8 @@ A Laravel package for validating in-app purchase receipts, managing subscription
 ## ✨ Features
 
 - Dispatches Laravel events for all App Store Server Notification types
-- Built-in receipt validators for Apple and Amazon
+- Dispatches Laravel events for all Google Play Real-time Developer Notification types
+- Built-in receipt validators for Apple, Google Play and Amazon
 - Simple configuration via Laravel’s container and config files
 - Supports Apple App Store Server API (AppTransaction, Get Transaction Info, etc.)
 - Optional PSR-3 request/response logging via any Laravel log channel
@@ -61,6 +62,15 @@ return [
             'validator' => 'amazon',
             'developer_secret' => 'DEVELOPER_SECRET',
             'environment' => Environment::SANDBOX,
+        ],
+        'google-play' => [
+            'validator' => 'google-play',
+            'package_name' => 'com.example',
+            // Service account JSON key with access to the app in the Play Console.
+            // Or pass the raw contents as 'service_account_json'.
+            'service_account_key_path' => base_path('resources/keys/google-play-service-account.json'),
+            // Google has no sandbox endpoint; licence-tester purchases are flagged on the response.
+            'environment' => Environment::PRODUCTION,
         ],
     ],
 ];
@@ -142,6 +152,57 @@ This controller automatically dispatches Laravel events for **all Apple App Stor
 - `ExternalPurchaseToken`
 - `OneTimeCharge`
 - `Test`
+
+---
+
+### Google Play Real-time Developer Notifications
+
+Google Play publishes notifications to a Cloud Pub/Sub topic. Create a **push** subscription on that topic pointing at your endpoint:
+
+```php
+use Aporat\AppStorePurchases\Http\Controllers\GooglePlayServerNotificationController;
+
+Route::prefix('server-notifications')->middleware(['throttle:60,1'])->group(function () {
+    Route::post('google-play-callback', GooglePlayServerNotificationController::class);
+});
+```
+
+Pub/Sub retries any non-2xx response for up to seven days, so the controller acknowledges undecodable payloads with `200` (they will never succeed) and only returns `500` when one of your listeners throws, and `401` when push verification fails.
+
+#### Authenticating pushes
+
+The notification body is unsigned, so enable authentication on the Pub/Sub push subscription (a service account with an OIDC token) and tell the package what to expect:
+
+```env
+GOOGLE_PLAY_RTDN_AUDIENCE=https://api.example.com/server-notifications/google-play-callback
+GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL=rtdn-push@your-project.iam.gserviceaccount.com
+```
+
+Verification uses the `google/auth` package (`composer require google/auth`). When no audience is configured, verification is skipped, which keeps local development and the Play Console's "Send test notification" button working. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
+
+#### Events
+
+Every notification type is dispatched as an event under `Aporat\AppStorePurchases\Events\GooglePlay`, all extending `GooglePlayEvent`:
+
+- Subscriptions: `SubscriptionPurchased`, `SubscriptionRenewed`, `SubscriptionRecovered`, `SubscriptionRestarted`, `SubscriptionCanceled`, `SubscriptionOnHold`, `SubscriptionInGracePeriod`, `SubscriptionPaused`, `SubscriptionPauseScheduleChanged`, `SubscriptionDeferred`, `SubscriptionPriceChangeConfirmed`, `SubscriptionPriceChangeUpdated`, `SubscriptionRevoked`, `SubscriptionExpired`, `SubscriptionPendingPurchaseCanceled`, `SubscriptionUnknown`
+- One-time products: `OneTimeProductPurchased`, `OneTimeProductCanceled`, `OneTimeProductUnknown`
+- Refunds and chargebacks: `PurchaseVoided`
+- `Test`
+
+Unlike Apple's notifications, a Play notification only identifies the purchase token. Re-read the purchase before changing entitlement:
+
+```php
+use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionRenewed;
+use Aporat\AppStorePurchases\Facades\AppStorePurchases;
+
+Event::listen(SubscriptionRenewed::class, function (SubscriptionRenewed $event) {
+    $purchase = AppStorePurchases::get('google-play')->getSubscriptionPurchaseV2($event->purchaseToken());
+
+    foreach (Subscription::getByPurchaseToken($event->purchaseToken()) as $subscription) {
+        $subscription->account->applyPlayPurchase($purchase);
+    }
+});
+```
 
 ---
 

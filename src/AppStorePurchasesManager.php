@@ -11,6 +11,7 @@ use ReceiptValidator\AbstractValidator;
 use ReceiptValidator\Amazon\Validator as AmazonValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
 use ReceiptValidator\Environment;
+use ReceiptValidator\GooglePlay\Validator as GooglePlayValidator;
 use ReceiptValidator\iTunes\Validator as iTunesValidator;
 use RuntimeException;
 
@@ -126,7 +127,7 @@ class AppStorePurchasesManager
      */
     public function supportedValidators(): array
     {
-        return ['apple-app-store', 'itunes', 'amazon'];
+        return ['apple-app-store', 'itunes', 'amazon', 'google-play'];
     }
 
     /**
@@ -174,6 +175,53 @@ class AppStorePurchasesManager
 
         return new iTunesValidator(
             sharedSecret: $config['shared_secret'],
+            environment: $config['environment']
+        );
+    }
+
+    /**
+     * Build a Google Play validator from a service-account key.
+     *
+     * Accepts either 'service_account_key_path' (path to the JSON key file) or
+     * 'service_account_json' (the raw JSON contents), plus the app's 'package_name'.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    protected function createGooglePlayValidator(array $config): AbstractValidator
+    {
+        if (! isset($config['package_name']) || ! is_string($config['package_name']) || $config['package_name'] === '') {
+            throw new InvalidArgumentException("Google Play validator config is missing required 'package_name'.");
+        }
+
+        $json = $config['service_account_json'] ?? null;
+
+        if (! is_string($json) || $json === '') {
+            $path = $config['service_account_key_path'] ?? null;
+
+            if (! is_string($path) || $path === '') {
+                throw new InvalidArgumentException(
+                    "Google Play validator config requires 'service_account_key_path' or 'service_account_json'."
+                );
+            }
+
+            if (! file_exists($path)) {
+                throw new RuntimeException("Service account key file does not exist at path: {$path}");
+            }
+
+            if (! is_readable($path)) {
+                throw new RuntimeException("Service account key file is not readable at path: {$path}");
+            }
+
+            $json = file_get_contents($path);
+
+            if ($json === false) {
+                throw new RuntimeException("Failed to read service account key file at path: {$path}");
+            }
+        }
+
+        return new GooglePlayValidator(
+            packageName: $config['package_name'],
+            credentials: $json,
             environment: $config['environment']
         );
     }

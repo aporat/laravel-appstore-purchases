@@ -11,6 +11,7 @@ use Psr\Log\NullLogger;
 use ReceiptValidator\Amazon\Validator as AmazonValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleValidator;
 use ReceiptValidator\Environment;
+use ReceiptValidator\GooglePlay\Validator as GooglePlayValidator;
 use ReceiptValidator\iTunes\Validator as iTunesValidator;
 
 class AppStorePurchasesManagerTest extends TestCase
@@ -36,6 +37,13 @@ class AppStorePurchasesManagerTest extends TestCase
             'validator' => 'amazon',
             'developer_secret' => 'DEVELOPER_SECRET',
             'environment' => Environment::SANDBOX,
+        ]);
+
+        $app['config']->set('appstore-purchases.validators.google-play', [
+            'validator' => 'google-play',
+            'package_name' => 'app.example',
+            'service_account_key_path' => __DIR__.'/GooglePlay/certs/testServiceAccount.json',
+            'environment' => Environment::PRODUCTION,
         ]);
 
         $app['config']->set('appstore-purchases.validators.unsupported', [
@@ -72,6 +80,72 @@ class AppStorePurchasesManagerTest extends TestCase
         $validator = $manager->get('amazon');
 
         $this->assertInstanceOf(AmazonValidator::class, $validator);
+    }
+
+    #[Test]
+    public function it_resolves_google_play_validator()
+    {
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $validator = $manager->get('google-play');
+
+        $this->assertInstanceOf(GooglePlayValidator::class, $validator);
+        $this->assertSame('app.example', $validator->getPackageName());
+        $this->assertSame(Environment::PRODUCTION, $validator->getEnvironment());
+        $this->assertContains('google-play', $manager->supportedValidators());
+    }
+
+    #[Test]
+    public function it_resolves_google_play_validator_from_inline_json()
+    {
+        $this->app['config']->set('appstore-purchases.validators.google-play.service_account_key_path', null);
+        $this->app['config']->set(
+            'appstore-purchases.validators.google-play.service_account_json',
+            file_get_contents(__DIR__.'/GooglePlay/certs/testServiceAccount.json')
+        );
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->assertInstanceOf(GooglePlayValidator::class, $manager->get('google-play'));
+    }
+
+    #[Test]
+    public function it_throws_when_google_play_package_name_is_missing()
+    {
+        $this->app['config']->set('appstore-purchases.validators.google-play.package_name', '');
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("missing required 'package_name'");
+
+        $manager->get('google-play');
+    }
+
+    #[Test]
+    public function it_throws_when_google_play_credentials_are_missing()
+    {
+        $this->app['config']->set('appstore-purchases.validators.google-play.service_account_key_path', null);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("requires 'service_account_key_path' or 'service_account_json'");
+
+        $manager->get('google-play');
+    }
+
+    #[Test]
+    public function it_throws_when_google_play_key_file_is_missing()
+    {
+        $this->app['config']->set('appstore-purchases.validators.google-play.service_account_key_path', '/invalid/path/key.json');
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Service account key file does not exist at path');
+
+        $manager->get('google-play');
     }
 
     #[Test]
@@ -300,6 +374,6 @@ class AppStorePurchasesManagerTest extends TestCase
     {
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->assertSame(['apple-app-store', 'itunes', 'amazon'], $manager->supportedValidators());
+        $this->assertSame(['apple-app-store', 'itunes', 'amazon', 'google-play'], $manager->supportedValidators());
     }
 }
