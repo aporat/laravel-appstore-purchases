@@ -30,18 +30,25 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
     /** Issuer Google uses for OIDC tokens. */
     public const string ISSUER = 'https://accounts.google.com';
 
-    /** The google/auth class used for verification, resolved at runtime so the dependency stays optional. */
+    /** The google/auth class used for verification, resolved at runtime so it can be swapped in tests. */
     private const string ACCESS_TOKEN_CLASS = 'Google\\Auth\\AccessToken';
 
     /**
-     * @param  callable(string, array<string, mixed>): (array<string, mixed>|false)|null  $verifier
-     *                                                                                               Override the token verification call (primarily for testing). Defaults to google/auth.
+     * @var (callable(string, array<string, mixed>): (array<string, mixed>|false))|null
+     */
+    private $verifier;
+
+    /**
+     * @param  (callable(string, array<string, mixed>): (array<string, mixed>|false))|null  $verifier
+     *                                                                                                 Override the token verification call (primarily for testing). Defaults to google/auth.
      */
     public function __construct(
         private readonly ?string $audience,
         private readonly ?string $serviceAccountEmail = null,
-        private $verifier = null,
-    ) {}
+        ?callable $verifier = null,
+    ) {
+        $this->verifier = $verifier;
+    }
 
     public function verify(Request $request): bool
     {
@@ -57,8 +64,14 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
             return false;
         }
 
+        // Resolved outside the try: a missing google/auth package is a
+        // deployment fault, not a forged push. Reporting it as a rejection
+        // would 401 every notification while Pub/Sub retried for seven days
+        // with nothing in the logs but "invalid token".
+        $verify = $this->resolveVerifier();
+
         try {
-            $payload = ($this->resolveVerifier())($token, [
+            $payload = $verify($token, [
                 'audience' => $this->audience,
                 'issuer' => self::ISSUER,
             ]);
