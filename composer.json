@@ -30,7 +30,8 @@
     "ext-json": "*",
     "ext-openssl": "*",
     "illuminate/support": "^12.0 || ^13.0",
-    "aporat/store-receipt-validator": "dev-main"
+    "aporat/store-receipt-validator": "dev-main",
+    "google/auth": "^1.47"
   },
   "require-dev": {
     "orchestra/testbench": "^10.0 || ^11.0",
@@ -38,9 +39,6 @@
     "phpstan/phpstan": "^2.0",
     "phpunit/phpunit": "^12.0 || ^13.0",
     "mockery/mockery": "^1.6"
-  },
-  "suggest": {
-    "google/auth": "Required to verify the OIDC token on Google Play RTDN Pub/Sub pushes (GoogleOidcPushVerifier)"
   },
   "autoload": {
     "psr-4": {

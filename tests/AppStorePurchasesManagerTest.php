@@ -5,6 +5,7 @@ namespace Aporat\AppStorePurchases\Tests;
 use Aporat\AppStorePurchases\AppStorePurchasesManager;
 use Illuminate\Log\LogManager;
 use Orchestra\Testbench\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -262,6 +263,100 @@ class AppStorePurchasesManagerTest extends TestCase
         $manager = new AppStorePurchasesManager($this->app);
 
         $this->assertSame($manager->get('itunes'), $manager->get('itunes'));
+    }
+
+    #[Test]
+    public function it_returns_a_separate_instance_for_an_environment_override()
+    {
+        $this->app['config']->set('appstore-purchases.validators.itunes.environment', Environment::PRODUCTION);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $configured = $manager->get('itunes');
+        $sandbox = $manager->get('itunes', Environment::SANDBOX);
+
+        $this->assertNotSame($configured, $sandbox);
+        $this->assertSame(Environment::SANDBOX, $sandbox->getEnvironment());
+
+        // The override must not leak into the shared instance: a queue worker
+        // handling a sandbox receipt would otherwise point every later
+        // production lookup at the sandbox endpoint.
+        $this->assertSame(Environment::PRODUCTION, $manager->get('itunes')->getEnvironment());
+        $this->assertSame($sandbox, $manager->get('itunes', 'sandbox'));
+    }
+
+    #[Test]
+    public function it_throws_when_an_environment_override_is_invalid()
+    {
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage("invalid 'environment' value: staging");
+
+        $manager->get('itunes', 'staging');
+    }
+
+    #[Test]
+    #[DataProvider('driverNameSpellings')]
+    public function it_accepts_alternate_driver_name_spellings(string $spelling)
+    {
+        $this->app['config']->set('appstore-purchases.validators.spelled', [
+            'validator' => $spelling,
+            'key_path' => __DIR__.'/AppleAppStore/certs/testSigningKey.p8',
+            'key_id' => 'TESTKEY123',
+            'issuer_id' => 'ISSUER123',
+            'bundle_id' => 'com.example.app',
+            'environment' => Environment::SANDBOX,
+        ]);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->assertInstanceOf(AppleValidator::class, $manager->get('spelled'));
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function driverNameSpellings(): array
+    {
+        return [
+            'kebab' => ['apple-app-store'],
+            'camel' => ['appleAppStore'],
+            'studly' => ['AppleAppStore'],
+            'snake' => ['apple_app_store'],
+            'alias' => ['apple'],
+        ];
+    }
+
+    #[Test]
+    public function it_throws_when_validator_config_is_not_an_array()
+    {
+        $this->app['config']->set('appstore-purchases.validators.broken', 'itunes');
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('configuration must be an array');
+
+        $manager->get('broken');
+    }
+
+    #[Test]
+    public function it_throws_when_a_key_file_is_empty()
+    {
+        $path = tempnam(sys_get_temp_dir(), 'key');
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', $path);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        try {
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('Signing key file is empty');
+
+            $manager->get('apple-app-store');
+        } finally {
+            @unlink($path);
+        }
     }
 
     #[Test]

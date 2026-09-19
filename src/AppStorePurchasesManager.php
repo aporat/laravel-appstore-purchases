@@ -18,11 +18,40 @@ use RuntimeException;
 class AppStorePurchasesManager
 {
     /**
+     * Canonical driver name => factory method.
+     *
+     * @var array<string, string>
+     */
+    private const DRIVERS = [
+        'apple-app-store' => 'createAppleAppStoreValidator',
+        'itunes' => 'createItunesValidator',
+        'amazon' => 'createAmazonValidator',
+        'google-play' => 'createGooglePlayValidator',
+    ];
+
+    /**
+     * Spellings of a driver name that are accepted in config, mapped onto the
+     * canonical name. Keys are the normalised form (see normaliseDriver()).
+     *
+     * @var array<string, string>
+     */
+    private const DRIVER_ALIASES = [
+        'apple' => 'apple-app-store',
+        'app-store' => 'apple-app-store',
+        'apple-appstore' => 'apple-app-store',
+        'i-tunes' => 'itunes',
+        'google' => 'google-play',
+        'play' => 'google-play',
+    ];
+
+    /**
      * The application instance.
      */
     protected Application $app;
 
     /**
+     * Resolved validators, keyed by name and (optional) environment override.
+     *
      * @var array<string, AbstractValidator>
      */
     protected array $validators = [];
@@ -35,14 +64,32 @@ class AppStorePurchasesManager
         $this->app = $app;
     }
 
-    public function get(string $name): AbstractValidator
+    /**
+     * Get the validator configured under the given name.
+     *
+     * Validators are cached per name, so the returned instance is shared with
+     * every other caller. Pass $environment when a single call needs a
+     * different environment from the configured one: that returns a separate,
+     * separately cached instance rather than mutating the shared one, which
+     * would otherwise leak the override into unrelated calls for the lifetime
+     * of the process (queue workers, Octane).
+     */
+    public function get(string $name, Environment|string|null $environment = null): AbstractValidator
     {
-        return $this->validators[$name] ??= $this->resolve($name);
+        $environment = $environment === null ? null : $this->toEnvironment($environment, $name);
+
+        $key = $name.'|'.($environment === null ? '' : $environment->value);
+
+        return $this->validators[$key] ??= $this->resolve($name, $environment);
     }
 
-    protected function resolve(string $name): AbstractValidator
+    protected function resolve(string $name, ?Environment $environment = null): AbstractValidator
     {
         $config = $this->getConfig($name);
+
+        if ($environment !== null) {
+            $config['environment'] = $environment;
+        }
 
         return $this->build($config);
     }
@@ -61,6 +108,10 @@ class AppStorePurchasesManager
             throw new InvalidArgumentException("App store validator [{$name}] is not defined.");
         }
 
+        if (! is_array($config)) {
+            throw new InvalidArgumentException("App store validator [{$name}] configuration must be an array.");
+        }
+
         if (! isset($config['validator']) || ! is_string($config['validator'])) {
             throw new InvalidArgumentException("App store validator [{$name}] is missing required 'validator' key.");
         }
@@ -69,11 +120,7 @@ class AppStorePurchasesManager
             throw new InvalidArgumentException("App store validator [{$name}] is missing required 'environment' key.");
         }
 
-        if (is_string($config['environment'])) {
-            $config['environment'] = Environment::fromString($config['environment']);
-        } elseif (! $config['environment'] instanceof Environment) {
-            throw new InvalidArgumentException("App store validator [{$name}] 'environment' must be a string or Environment instance.");
-        }
+        $config['environment'] = $this->toEnvironment($config['environment'], $name);
 
         return $config;
     }
@@ -85,19 +132,63 @@ class AppStorePurchasesManager
      */
     public function build(array $config): AbstractValidator
     {
-        $validatorMethod = 'create'.str_replace('-', '', ucwords($config['validator'], '-')).'Validator';
+        $driver = $this->normaliseDriver((string) ($config['validator'] ?? ''));
 
-        if (method_exists($this, $validatorMethod)) {
-            $validator = $this->{$validatorMethod}($config);
-
-            if ($logger = $this->resolveLogger($config)) {
-                $validator->setLogger($logger);
-            }
-
-            return $validator;
+        if (! isset(self::DRIVERS[$driver])) {
+            throw new InvalidArgumentException("Validator [{$config['validator']}] is not supported.");
         }
 
-        throw new InvalidArgumentException("Validator [{$config['validator']}] is not supported.");
+        if (! array_key_exists('environment', $config)) {
+            throw new InvalidArgumentException("Validator [{$config['validator']}] is missing required 'environment' key.");
+        }
+
+        $config['environment'] = $this->toEnvironment($config['environment'], $driver);
+
+        /** @var AbstractValidator $validator */
+        $validator = $this->{self::DRIVERS[$driver]}($config);
+
+        if ($logger = $this->resolveLogger($config)) {
+            $validator->setLogger($logger);
+        }
+
+        return $validator;
+    }
+
+    /**
+     * Fold the spellings a config file might use ('appleAppStore',
+     * 'apple_app_store', 'AppleAppStore') onto one canonical driver name.
+     */
+    private function normaliseDriver(string $validator): string
+    {
+        $name = (string) preg_replace('/(?<!^)[A-Z]/', '-$0', trim($validator));
+        $name = strtolower((string) preg_replace('/[^A-Za-z0-9]+/', '-', $name));
+        $name = trim((string) preg_replace('/-+/', '-', $name), '-');
+
+        return self::DRIVER_ALIASES[$name] ?? $name;
+    }
+
+    /**
+     * Coerce a configured or caller-supplied environment onto the enum.
+     */
+    private function toEnvironment(mixed $environment, string $name): Environment
+    {
+        if ($environment instanceof Environment) {
+            return $environment;
+        }
+
+        if (! is_string($environment)) {
+            throw new InvalidArgumentException(
+                "App store validator [{$name}] 'environment' must be a string or Environment instance."
+            );
+        }
+
+        try {
+            return Environment::fromString($environment);
+        } catch (InvalidArgumentException) {
+            throw new InvalidArgumentException(
+                "App store validator [{$name}] has an invalid 'environment' value: {$environment}."
+            );
+        }
     }
 
     /**
@@ -127,7 +218,7 @@ class AppStorePurchasesManager
      */
     public function supportedValidators(): array
     {
-        return ['apple-app-store', 'itunes', 'amazon', 'google-play'];
+        return array_keys(self::DRIVERS);
     }
 
     /**
@@ -141,22 +232,8 @@ class AppStorePurchasesManager
             }
         }
 
-        if (! file_exists($config['key_path'])) {
-            throw new RuntimeException("Signing key file does not exist at path: {$config['key_path']}");
-        }
-
-        if (! is_readable($config['key_path'])) {
-            throw new RuntimeException("Signing key file is not readable at path: {$config['key_path']}");
-        }
-
-        $signingKey = file_get_contents($config['key_path']);
-
-        if ($signingKey === false) {
-            throw new RuntimeException("Failed to read signing key file at path: {$config['key_path']}");
-        }
-
         return new AppleAppStoreValidator(
-            signingKey: $signingKey,
+            signingKey: $this->readKeyFile($config['key_path'], 'Signing key'),
             keyId: $config['key_id'],
             issuerId: $config['issuer_id'],
             bundleId: $config['bundle_id'],
@@ -204,19 +281,7 @@ class AppStorePurchasesManager
                 );
             }
 
-            if (! file_exists($path)) {
-                throw new RuntimeException("Service account key file does not exist at path: {$path}");
-            }
-
-            if (! is_readable($path)) {
-                throw new RuntimeException("Service account key file is not readable at path: {$path}");
-            }
-
-            $json = file_get_contents($path);
-
-            if ($json === false) {
-                throw new RuntimeException("Failed to read service account key file at path: {$path}");
-            }
+            $json = $this->readKeyFile($path, 'Service account key');
         }
 
         return new GooglePlayValidator(
@@ -239,5 +304,28 @@ class AppStorePurchasesManager
             developerSecret: $config['developer_secret'],
             environment: $config['environment']
         );
+    }
+
+    /**
+     * Read a credential file, failing loudly rather than handing an empty
+     * string to a validator that would then fail on every API call.
+     */
+    private function readKeyFile(string $path, string $label): string
+    {
+        if (! file_exists($path)) {
+            throw new RuntimeException("{$label} file does not exist at path: {$path}");
+        }
+
+        if (! is_readable($path)) {
+            throw new RuntimeException("{$label} file is not readable at path: {$path}");
+        }
+
+        $contents = file_get_contents($path);
+
+        if ($contents === false || trim($contents) === '') {
+            throw new RuntimeException("{$label} file is empty or could not be read at path: {$path}");
+        }
+
+        return $contents;
     }
 }

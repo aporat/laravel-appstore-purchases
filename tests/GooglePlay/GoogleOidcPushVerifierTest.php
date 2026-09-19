@@ -149,7 +149,7 @@ class GoogleOidcPushVerifierTest extends TestCase
     }
 
     #[Test]
-    public function it_requires_google_auth_when_no_verifier_is_injected(): void
+    public function it_raises_rather_than_rejects_when_google_auth_is_absent(): void
     {
         if (class_exists('Google\Auth\AccessToken')) {
             $this->markTestSkipped('google/auth is installed; the fallback path is exercised in real apps.');
@@ -157,6 +157,11 @@ class GoogleOidcPushVerifierTest extends TestCase
 
         $verifier = new GoogleOidcPushVerifier(audience: 'aud');
 
-        $this->assertFalse($verifier->verify($this->request('token')), 'A missing dependency is reported as a rejected push, not a crash.');
+        // A missing dependency must not look like a forged push: 401ing here
+        // would silently drop every notification for seven days of retries.
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('requires the google/auth package');
+
+        $verifier->verify($this->request('token'));
     }
 }

@@ -178,7 +178,7 @@ GOOGLE_PLAY_RTDN_AUDIENCE=https://api.example.com/server-notifications/google-pl
 GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL=rtdn-push@your-project.iam.gserviceaccount.com
 ```
 
-Verification uses the `google/auth` package (`composer require google/auth`). When no audience is configured, verification is skipped, which keeps local development and the Play Console's "Send test notification" button working. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
+Verification uses the `google/auth` package, which is a hard dependency of this package. When no audience is configured, verification is skipped, which keeps local development and the Play Console's "Send test notification" button working — so **always set an audience in production**, or the endpoint accepts anything. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
 
 #### Events
 
@@ -242,8 +242,8 @@ If you have a raw app receipt, extract the transaction ID first:
 
 ```php
 use Aporat\AppStorePurchases\Facades\AppStorePurchases;
-use ReceiptValidator\AppleAppStore\Validators\AppleAppStoreValidator;
 use ReceiptValidator\AppleAppStore\ReceiptUtility;
+use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
 
 $validator = AppStorePurchases::get('apple');
 
@@ -252,3 +252,27 @@ if ($validator instanceof AppleAppStoreValidator) {
     $response = $validator->validate($transactionId);
 }
 ```
+
+### Validating against a different environment
+
+`get()` caches one validator per name and hands the same instance to every
+caller, so calling `setEnvironment()` on it leaks the change into unrelated
+lookups for the rest of the process (a queue worker or Octane server handling
+one sandbox receipt would point every later production lookup at the sandbox
+endpoint). Pass the environment to `get()` instead — it returns a separate,
+separately cached instance and leaves the configured one alone:
+
+```php
+use ReceiptValidator\Environment;
+
+$sandbox = AppStorePurchases::get('apple', Environment::SANDBOX);
+$sandbox = AppStorePurchases::get('apple', 'sandbox'); // strings work too
+```
+
+### Validator names
+
+The `validator` key accepts `apple-app-store`, `itunes`, `amazon` and
+`google-play`. Camel, studly and snake spellings of those (`appleAppStore`,
+`AppleAppStore`, `apple_app_store`) and the short aliases `apple`, `google` and
+`play` resolve to the same drivers. `AppStorePurchases::supportedValidators()`
+returns the canonical list.
