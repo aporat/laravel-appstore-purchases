@@ -178,18 +178,26 @@ GOOGLE_PLAY_RTDN_AUDIENCE=https://api.example.com/server-notifications/google-pl
 GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL=rtdn-push@your-project.iam.gserviceaccount.com
 ```
 
-Serving several Play apps from one API, each with its own Cloud project and push subscription? Both settings accept a list, and a push is accepted when it verifies against any audience and was signed by any listed account:
+Serving several Play apps from one API, each with its own Cloud project and push subscription? Give each Google Play validator entry its own `rtdn` block. The verifier reads the package name from the notification body and checks the token against that app's audience and signing account, so a push claiming to be for one app cannot be signed by another app's subscription. The global `google_play.rtdn` block is the fallback for packages without their own entry, and every setting accepts a string or a list:
 
 ```php
-'google_play' => [
-    'rtdn' => [
-        'audience' => [
-            'https://api.example.com/server-notifications/google-play-callback',
-            'https://api.other.com/server-notifications/google-play-callback',
+'validators' => [
+    'app-one' => [
+        'validator' => 'google-play',
+        'package_name' => 'com.example.one',
+        'service_account_key_path' => base_path('resources/keys/one.json'),
+        'rtdn' => [
+            'audience' => 'https://api.one.example/server-notifications/google-play-callback',
+            'service_account_email' => 'rtdn-push@project-one.iam.gserviceaccount.com',
         ],
-        'service_account_email' => [
-            'rtdn-push@project-one.iam.gserviceaccount.com',
-            'rtdn-push@project-two.iam.gserviceaccount.com',
+    ],
+    'app-two' => [
+        'validator' => 'google-play',
+        'package_name' => 'com.example.two',
+        'service_account_key_path' => base_path('resources/keys/two.json'),
+        'rtdn' => [
+            'audience' => 'https://api.two.example/server-notifications/google-play-callback',
+            'service_account_email' => 'rtdn-push@project-two.iam.gserviceaccount.com',
         ],
     ],
 ],
