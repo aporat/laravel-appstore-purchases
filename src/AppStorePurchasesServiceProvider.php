@@ -6,6 +6,7 @@ namespace Aporat\AppStorePurchases;
 
 use Aporat\AppStorePurchases\Contracts\PubSubPushVerifier;
 use Aporat\AppStorePurchases\GooglePlay\GoogleOidcPushVerifier;
+use Aporat\AppStorePurchases\Logging\NotificationLogger;
 use Illuminate\Contracts\Support\DeferrableProvider;
 use Illuminate\Support\ServiceProvider;
 
@@ -18,6 +19,8 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
         });
 
         $this->mergeConfigFrom(__DIR__.'/../config/appstore-purchases.php', 'appstore-purchases');
+
+        $this->app->singleton(NotificationLogger::class, fn ($app) => new NotificationLogger($app));
 
         $this->app->bind(PubSubPushVerifier::class, function ($app) {
             $config = $app['config']['appstore-purchases.google_play.rtdn'] ?? [];
@@ -46,6 +49,7 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
                 audience: $config['audience'] ?? null,
                 serviceAccountEmail: $config['service_account_email'] ?? null,
                 apps: $apps,
+                logger: $app->make(NotificationLogger::class),
             );
         });
     }
@@ -67,6 +71,7 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
         return [
             'appstore-purchases',
             PubSubPushVerifier::class,
+            NotificationLogger::class,
         ];
     }
 }

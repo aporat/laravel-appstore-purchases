@@ -7,6 +7,7 @@ namespace Aporat\AppStorePurchases\GooglePlay;
 use Aporat\AppStorePurchases\Contracts\PubSubPushVerifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Throwable;
 
@@ -67,12 +68,14 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
      *                                                                                                                                 Per-package overrides, keyed by Play package name.
      * @param  (callable(string, array<string, mixed>): (array<string, mixed>|false))|null  $verifier
      *                                                                                                 Override the token verification call (primarily for testing). Defaults to google/auth.
+     * @param  LoggerInterface|null  $logger  Where rejections and verifications are logged; the application's default logger when null.
      */
     public function __construct(
         string|array|null $audience,
         string|array|null $serviceAccountEmail = null,
         array $apps = [],
         ?callable $verifier = null,
+        private readonly ?LoggerInterface $logger = null,
     ) {
         $this->audiences = self::normalise($audience);
         $this->serviceAccountEmails = self::normalise($serviceAccountEmail);
@@ -137,7 +140,7 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
         $token = $request->bearerToken();
 
         if ($token === null || $token === '') {
-            Log::warning('Google Play RTDN rejected: missing bearer token.', [
+            $this->log()->warning('Google Play RTDN rejected: missing bearer token.', [
                 'package_name' => $packageName,
             ]);
 
@@ -162,7 +165,7 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
                     'issuer' => self::ISSUER,
                 ]);
             } catch (Throwable $e) {
-                Log::warning('Google Play RTDN rejected: token verification threw.', [
+                $this->log()->warning('Google Play RTDN rejected: token verification threw.', [
                     'package_name' => $packageName,
                     'error' => $e->getMessage(),
                 ]);
@@ -180,7 +183,7 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
             // own (unverified) claims are the only clue to which: an "aud" that
             // matches none of the tried audiences, an expired "exp", or a
             // signature problem when the claims all look right.
-            Log::warning('Google Play RTDN rejected: invalid bearer token.', [
+            $this->log()->warning('Google Play RTDN rejected: invalid bearer token.', [
                 'package_name' => $packageName,
                 'audiences_tried' => $audiences,
                 'token_claims' => self::unverifiedClaims($token),
@@ -190,7 +193,7 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
         }
 
         if ($emails !== [] && ! in_array($payload['email'] ?? null, $emails, true)) {
-            Log::warning('Google Play RTDN rejected: unexpected service account.', [
+            $this->log()->warning('Google Play RTDN rejected: unexpected service account.', [
                 'package_name' => $packageName,
                 'email' => $payload['email'] ?? null,
                 'expected' => $emails,
@@ -199,7 +202,9 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
             return false;
         }
 
-        Log::debug('Google Play RTDN push verified.', [
+        // Info rather than debug: a production stream typically drops debug,
+        // and one line per accepted push is the cheapest audit trail there is.
+        $this->log()->info('Google Play RTDN push verified.', [
             'package_name' => $packageName,
             'audience' => $payload['aud'] ?? null,
             'email' => $payload['email'] ?? null,
@@ -302,6 +307,11 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
             $values,
             static fn (mixed $v): bool => is_string($v) && $v !== '',
         )));
+    }
+
+    private function log(): LoggerInterface
+    {
+        return $this->logger ?? Log::getFacadeRoot();
     }
 
     /**

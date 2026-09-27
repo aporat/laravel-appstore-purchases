@@ -354,7 +354,7 @@ class GoogleOidcPushVerifierTest extends TestCase
     }
 
     #[Test]
-    public function it_logs_a_debug_line_when_a_push_verifies(): void
+    public function it_logs_an_info_line_when_a_push_verifies(): void
     {
         Log::spy();
 
@@ -364,7 +364,7 @@ class GoogleOidcPushVerifierTest extends TestCase
         );
 
         $this->assertTrue($verifier->verify($this->request('token', 'com.example.one')));
-        Log::shouldHaveReceived('debug')
+        Log::shouldHaveReceived('info')
             ->once()
             ->withArgs(fn (string $m, array $c): bool => str_contains($m, 'push verified')
                 && $c['package_name'] === 'com.example.one'

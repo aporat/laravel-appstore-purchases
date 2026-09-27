@@ -16,6 +16,11 @@ return [
 
     'logging' => [
         'channel' => env('APPSTORE_LOG_CHANNEL'),
+        // Where the server-notification endpoints (App Store, Google Play
+        // RTDN) and the Pub/Sub push verifier write: decode failures,
+        // listener exceptions, rejected pushes and each verified push. Null
+        // uses the application's default log channel.
+        'notifications_channel' => env('APPSTORE_NOTIFICATIONS_LOG_CHANNEL'),
     ],
 
     'validators' => [

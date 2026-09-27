@@ -27,9 +27,9 @@ use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionRestarted;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionRevoked;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionUnknown;
 use Aporat\AppStorePurchases\Events\GooglePlay\Test;
+use Aporat\AppStorePurchases\Logging\NotificationLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use ReceiptValidator\GooglePlay\OneTimeProductNotificationType;
 use ReceiptValidator\GooglePlay\ServerNotification;
 use ReceiptValidator\GooglePlay\SubscriptionNotificationType;
@@ -49,6 +49,7 @@ final class GooglePlayServerNotificationController
 {
     public function __construct(
         private readonly PubSubPushVerifier $verifier,
+        private readonly NotificationLogger $logger,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -60,7 +61,7 @@ final class GooglePlayServerNotificationController
         try {
             $notification = ServerNotification::fromPubSubMessage($request->all());
         } catch (\Throwable $e) {
-            Log::error('Failed to decode Google Play developer notification payload', [
+            $this->logger->error('Failed to decode Google Play developer notification payload', [
                 'error' => $e->getMessage(),
                 'payload_size' => strlen((string) $request->getContent()),
             ]);
@@ -73,7 +74,7 @@ final class GooglePlayServerNotificationController
         try {
             event($event);
         } catch (\Throwable $e) {
-            Log::error('Google Play developer notification listener threw an exception', [
+            $this->logger->error('Google Play developer notification listener threw an exception', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'event' => $event::class,
@@ -137,7 +138,7 @@ final class GooglePlayServerNotificationController
      */
     private function unknown(ServerNotification $notification, string $eventClass, int $rawType): GooglePlayEvent
     {
-        Log::warning('Google Play developer notification type has no mapped event', [
+        $this->logger->warning('Google Play developer notification type has no mapped event', [
             'notification_type' => $rawType,
             'package_name' => $notification->getPackageName(),
             'purchase_token' => $notification->getPurchaseToken(),

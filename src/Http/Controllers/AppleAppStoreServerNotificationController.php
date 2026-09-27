@@ -23,20 +23,24 @@ use Aporat\AppStorePurchases\Events\SubscriptionRenewalExtended;
 use Aporat\AppStorePurchases\Events\SubscriptionRenewalExtension;
 use Aporat\AppStorePurchases\Events\SubscriptionRenewed;
 use Aporat\AppStorePurchases\Events\Test;
+use Aporat\AppStorePurchases\Logging\NotificationLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Log;
 use ReceiptValidator\AppleAppStore\ServerNotification as AppleAppStoreServerNotification;
 use ReceiptValidator\AppleAppStore\ServerNotificationType as AppleAppStoreServerNotificationType;
 
 final class AppleAppStoreServerNotificationController
 {
+    public function __construct(
+        private readonly NotificationLogger $logger,
+    ) {}
+
     public function __invoke(Request $request): Response
     {
         try {
             $notification = new AppleAppStoreServerNotification($request->all());
         } catch (\Throwable $e) {
-            Log::error('Failed to decode Apple App Store server notification payload', [
+            $this->logger->error('Failed to decode Apple App Store server notification payload', [
                 'error' => $e->getMessage(),
                 'payload_size' => strlen((string) $request->getContent()),
             ]);
@@ -68,7 +72,7 @@ final class AppleAppStoreServerNotificationController
         };
 
         if ($event === null) {
-            Log::warning('Apple App Store server notification type has no mapped event', [
+            $this->logger->warning('Apple App Store server notification type has no mapped event', [
                 'notification_type' => $notification->getNotificationType()->value,
                 'notification_uuid' => $notification->getNotificationUUID(),
             ]);
@@ -76,7 +80,7 @@ final class AppleAppStoreServerNotificationController
             try {
                 event($event);
             } catch (\Throwable $e) {
-                Log::error('Apple App Store server notification listener threw an exception', [
+                $this->logger->error('Apple App Store server notification listener threw an exception', [
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
                     'notification_type' => $notification->getNotificationType()->value,

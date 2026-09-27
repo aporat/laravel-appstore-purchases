@@ -95,6 +95,14 @@ This applies to all validators. When enabled, the underlying HTTP client emits s
 | `warning` | API error responses (non-2xx with an error body) |
 | `error` | Connection failures and exceptions |
 
+### Notification endpoints
+
+The two notification controllers and the Pub/Sub push verifier log separately from the validators: decode failures, listener exceptions, rejected pushes (with the token's unverified claims) and one `info` line per verified push. They write to the application's default channel unless you route them elsewhere:
+
+```env
+APPSTORE_NOTIFICATIONS_LOG_CHANNEL=stack
+```
+
 ### Per-validator channel
 
 You can also set a different log channel for an individual validator by adding a `log_channel` key to its config. This takes precedence over the global setting:
