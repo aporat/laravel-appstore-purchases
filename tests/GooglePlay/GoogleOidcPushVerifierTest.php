@@ -40,8 +40,20 @@ class GoogleOidcPushVerifierTest extends TestCase
         $verifier = $this->app->make(PubSubPushVerifier::class);
 
         $this->assertInstanceOf(GoogleOidcPushVerifier::class, $verifier);
-        $this->assertSame('https://example.com/callback', (new \ReflectionProperty($verifier, 'audience'))->getValue($verifier));
-        $this->assertSame('svc@example.iam.gserviceaccount.com', (new \ReflectionProperty($verifier, 'serviceAccountEmail'))->getValue($verifier));
+        $this->assertSame(['https://example.com/callback'], $verifier->audiences());
+        $this->assertSame(['svc@example.iam.gserviceaccount.com'], $verifier->serviceAccountEmails());
+    }
+
+    #[Test]
+    public function it_accepts_lists_from_config(): void
+    {
+        $this->app['config']->set('appstore-purchases.google_play.rtdn.audience', ['https://one.example.com/cb', '', 'https://two.example.com/cb']);
+        $this->app['config']->set('appstore-purchases.google_play.rtdn.service_account_email', ['one@example.iam.gserviceaccount.com', null, 'two@example.iam.gserviceaccount.com']);
+
+        $verifier = $this->app->make(PubSubPushVerifier::class);
+
+        $this->assertSame(['https://one.example.com/cb', 'https://two.example.com/cb'], $verifier->audiences());
+        $this->assertSame(['one@example.iam.gserviceaccount.com', 'two@example.iam.gserviceaccount.com'], $verifier->serviceAccountEmails());
     }
 
     #[Test]
@@ -52,8 +64,18 @@ class GoogleOidcPushVerifierTest extends TestCase
 
         $verifier = $this->app->make(PubSubPushVerifier::class);
 
-        $this->assertNull((new \ReflectionProperty($verifier, 'audience'))->getValue($verifier));
-        $this->assertNull((new \ReflectionProperty($verifier, 'serviceAccountEmail'))->getValue($verifier));
+        $this->assertSame([], $verifier->audiences());
+        $this->assertSame([], $verifier->serviceAccountEmails());
+        $this->assertTrue($verifier->verify($this->request(null)));
+    }
+
+    #[Test]
+    public function it_treats_an_empty_list_as_unset(): void
+    {
+        $verifier = new GoogleOidcPushVerifier(audience: ['', null]);
+
+        $this->assertSame([], $verifier->audiences());
+        $this->assertTrue($verifier->verify($this->request(null)));
     }
 
     #[Test]
@@ -94,6 +116,57 @@ class GoogleOidcPushVerifierTest extends TestCase
             ['abc.def.ghi', ['audience' => 'https://example.com/callback', 'issuer' => GoogleOidcPushVerifier::ISSUER]],
             $captured
         );
+    }
+
+    #[Test]
+    public function it_tries_each_audience_until_one_verifies(): void
+    {
+        $tried = [];
+
+        $verifier = new GoogleOidcPushVerifier(
+            audience: ['https://one.example.com/cb', 'https://two.example.com/cb'],
+            verifier: function (string $token, array $options) use (&$tried): array|false {
+                $tried[] = $options['audience'];
+
+                return $options['audience'] === 'https://two.example.com/cb'
+                    ? ['email' => 'svc@example.iam.gserviceaccount.com']
+                    : false;
+            },
+        );
+
+        $this->assertTrue($verifier->verify($this->request('token')));
+        $this->assertSame(['https://one.example.com/cb', 'https://two.example.com/cb'], $tried);
+    }
+
+    #[Test]
+    public function it_rejects_when_no_audience_verifies(): void
+    {
+        Log::spy();
+
+        $verifier = new GoogleOidcPushVerifier(
+            audience: ['https://one.example.com/cb', 'https://two.example.com/cb'],
+            verifier: fn () => false,
+        );
+
+        $this->assertFalse($verifier->verify($this->request('token')));
+        Log::shouldHaveReceived('warning')->once()->withArgs(fn (string $m): bool => str_contains($m, 'invalid bearer token'));
+    }
+
+    #[Test]
+    public function it_accepts_any_listed_service_account(): void
+    {
+        Log::spy();
+
+        $make = fn (string $email) => new GoogleOidcPushVerifier(
+            audience: 'aud',
+            serviceAccountEmail: ['one@example.iam.gserviceaccount.com', 'two@example.iam.gserviceaccount.com'],
+            verifier: fn () => ['email' => $email],
+        );
+
+        $this->assertTrue($make('one@example.iam.gserviceaccount.com')->verify($this->request('token')));
+        $this->assertTrue($make('two@example.iam.gserviceaccount.com')->verify($this->request('token')));
+        $this->assertFalse($make('three@example.iam.gserviceaccount.com')->verify($this->request('token')));
+        Log::shouldHaveReceived('warning')->once()->withArgs(fn (string $m): bool => str_contains($m, 'unexpected service account'));
     }
 
     #[Test]
