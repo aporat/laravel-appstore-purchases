@@ -63,8 +63,8 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
     /**
      * @param  string|list<string>|null  $audience  Default accepted audience(s); null or empty disables verification for packages without their own entry.
      * @param  string|list<string>|null  $serviceAccountEmail  Default accepted signing account(s); null or empty skips the email check.
-     * @param  array<string, array{audience?: string|list<string>|null, service_account_email?: string|list<string>|null}>  $apps
-     *                                                                                                                             Per-package overrides, keyed by Play package name.
+     * @param  array<int|string, array{audience?: string|list<string>|null, service_account_email?: string|list<string>|null}>  $apps
+     *                                                                                                                                 Per-package overrides, keyed by Play package name.
      * @param  (callable(string, array<string, mixed>): (array<string, mixed>|false))|null  $verifier
      *                                                                                                 Override the token verification call (primarily for testing). Defaults to google/auth.
      */
