@@ -311,7 +311,64 @@ class GoogleOidcPushVerifierTest extends TestCase
         $verifier = new GoogleOidcPushVerifier(audience: 'aud', verifier: fn () => false);
 
         $this->assertFalse($verifier->verify($this->request('token')));
-        Log::shouldHaveReceived('warning')->once()->withArgs(fn (string $m): bool => str_contains($m, 'invalid bearer token'));
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $m, array $c): bool => str_contains($m, 'invalid bearer token')
+                && $c['audiences_tried'] === ['aud']
+                && $c['token_claims'] === ['malformed' => true, 'segments' => 1]);
+    }
+
+    #[Test]
+    public function it_logs_the_tokens_unverified_claims_when_rejecting_it(): void
+    {
+        Log::spy();
+
+        $exp = 1_700_000_000;
+        $claims = [
+            'iss' => 'https://accounts.google.com',
+            'aud' => 'https://other.example.com/cb',
+            'email' => 'svc@example.iam.gserviceaccount.com',
+            'email_verified' => true,
+            'sub' => '123',
+            'iat' => $exp - 3600,
+            'exp' => $exp,
+            'at_hash' => 'not-logged',
+        ];
+        $token = 'eyJhbGciOiJSUzI1NiJ9.'.rtrim(strtr(base64_encode((string) json_encode($claims)), '+/', '-_'), '=').'.sig';
+
+        $verifier = new GoogleOidcPushVerifier(audience: 'https://one.example.com/cb', verifier: fn () => false);
+
+        $this->assertFalse($verifier->verify($this->request($token)));
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(function (string $m, array $c): bool {
+                $claims = $c['token_claims'];
+
+                return str_contains($m, 'invalid bearer token')
+                    && $claims['aud'] === 'https://other.example.com/cb'
+                    && $claims['email'] === 'svc@example.iam.gserviceaccount.com'
+                    && $claims['exp'] === '2023-11-14T22:13:20+00:00'
+                    && $claims['expired'] === true
+                    && ! array_key_exists('at_hash', $claims);
+            });
+    }
+
+    #[Test]
+    public function it_logs_a_debug_line_when_a_push_verifies(): void
+    {
+        Log::spy();
+
+        $verifier = new GoogleOidcPushVerifier(
+            audience: 'https://one.example.com/cb',
+            verifier: fn () => ['aud' => 'https://one.example.com/cb', 'email' => 'svc@example.iam.gserviceaccount.com'],
+        );
+
+        $this->assertTrue($verifier->verify($this->request('token', 'com.example.one')));
+        Log::shouldHaveReceived('debug')
+            ->once()
+            ->withArgs(fn (string $m, array $c): bool => str_contains($m, 'push verified')
+                && $c['package_name'] === 'com.example.one'
+                && $c['email'] === 'svc@example.iam.gserviceaccount.com');
     }
 
     #[Test]

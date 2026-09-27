@@ -176,8 +176,14 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
         }
 
         if (! is_array($payload)) {
+            // google/auth answers false for every failure alike, so the token's
+            // own (unverified) claims are the only clue to which: an "aud" that
+            // matches none of the tried audiences, an expired "exp", or a
+            // signature problem when the claims all look right.
             Log::warning('Google Play RTDN rejected: invalid bearer token.', [
                 'package_name' => $packageName,
+                'audiences_tried' => $audiences,
+                'token_claims' => self::unverifiedClaims($token),
             ]);
 
             return false;
@@ -187,12 +193,56 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
             Log::warning('Google Play RTDN rejected: unexpected service account.', [
                 'package_name' => $packageName,
                 'email' => $payload['email'] ?? null,
+                'expected' => $emails,
             ]);
 
             return false;
         }
 
+        Log::debug('Google Play RTDN push verified.', [
+            'package_name' => $packageName,
+            'audience' => $payload['aud'] ?? null,
+            'email' => $payload['email'] ?? null,
+        ]);
+
         return true;
+    }
+
+    /**
+     * The claims a JWT carries, read without checking its signature, reduced
+     * to the ones that explain a rejection. Diagnostic only: nothing here is
+     * trusted, and the token itself is never logged.
+     *
+     * @return array<string, mixed>
+     */
+    private static function unverifiedClaims(string $token): array
+    {
+        $parts = explode('.', $token);
+
+        if (count($parts) !== 3) {
+            return ['malformed' => true, 'segments' => count($parts)];
+        }
+
+        $decoded = base64_decode(strtr($parts[1], '-_', '+/'), true);
+        $claims = $decoded === false ? null : json_decode($decoded, true);
+
+        if (! is_array($claims)) {
+            return ['malformed' => true, 'segments' => 3];
+        }
+
+        $picked = array_intersect_key($claims, array_flip(['iss', 'aud', 'email', 'email_verified', 'azp', 'sub']));
+
+        foreach (['iat', 'exp'] as $time) {
+            if (isset($claims[$time]) && is_int($claims[$time])) {
+                $picked[$time] = gmdate('c', $claims[$time]);
+            }
+        }
+
+        if (isset($claims['exp']) && is_int($claims['exp'])) {
+            $picked['expired'] = $claims['exp'] < time();
+        }
+
+        return $picked;
     }
 
     /**
