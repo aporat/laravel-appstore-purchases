@@ -47,6 +47,15 @@ return [
             // Google has no sandbox endpoint; licence-tester purchases are flagged
             // on the response itself. This value is informational only.
             'environment' => env('GOOGLE_PLAY_ENVIRONMENT', 'PRODUCTION'),
+            // Optional: this app's own Real-time Developer Notification push
+            // expectations, checked instead of the global 'google_play.rtdn'
+            // block below for notifications carrying this package name. Use
+            // it when several Play apps push to one API from different Cloud
+            // projects. Same keys and semantics as the global block.
+            // 'rtdn' => [
+            //     'audience' => env('GOOGLE_PLAY_RTDN_AUDIENCE'),
+            //     'service_account_email' => env('GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL'),
+            // ],
         ],
     ],
 
@@ -61,8 +70,9 @@ return [
     | token's "aud" claim) and, optionally, the service account email the
     | subscription signs with. Leave 'audience' null to skip verification.
     |
-    | Both accept a list as well, for an API that serves several Play apps
-    | whose push subscriptions sign from different Cloud projects.
+    | Both accept a list as well. These are the defaults; a Google Play
+    | validator entry above can carry its own 'rtdn' block, which is used
+    | instead for notifications with that entry's package name.
     |
     | Verification requires the google/auth package (composer require google/auth).
     |

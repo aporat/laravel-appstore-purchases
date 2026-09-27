@@ -22,11 +22,30 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
         $this->app->bind(PubSubPushVerifier::class, function ($app) {
             $config = $app['config']['appstore-purchases.google_play.rtdn'] ?? [];
 
+            // A Google Play validator entry may carry its own 'rtdn' block, for
+            // an API that serves several Play apps whose push subscriptions
+            // sign from different Cloud projects. Keyed here by package name,
+            // which is what the notification body identifies itself with.
+            $apps = [];
+            foreach ($app['config']['appstore-purchases.validators'] ?? [] as $validator) {
+                if (! is_array($validator) || ! in_array($validator['validator'] ?? null, ['google-play', 'google', 'play'], true)) {
+                    continue;
+                }
+
+                $packageName = $validator['package_name'] ?? null;
+                $rtdn = $validator['rtdn'] ?? null;
+
+                if (is_string($packageName) && $packageName !== '' && is_array($rtdn)) {
+                    $apps[$packageName] = $rtdn;
+                }
+            }
+
             // Each value may be a string or a list of strings; empty values
             // are dropped by the verifier itself.
             return new GoogleOidcPushVerifier(
                 audience: $config['audience'] ?? null,
                 serviceAccountEmail: $config['service_account_email'] ?? null,
+                apps: $apps,
             );
         });
     }
