@@ -22,11 +22,11 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
         $this->app->bind(PubSubPushVerifier::class, function ($app) {
             $config = $app['config']['appstore-purchases.google_play.rtdn'] ?? [];
 
+            // Each value may be a string or a list of strings; empty values
+            // are dropped by the verifier itself.
             return new GoogleOidcPushVerifier(
-                audience: is_string($config['audience'] ?? null) && $config['audience'] !== '' ? $config['audience'] : null,
-                serviceAccountEmail: is_string($config['service_account_email'] ?? null) && $config['service_account_email'] !== ''
-                    ? $config['service_account_email']
-                    : null,
+                audience: $config['audience'] ?? null,
+                serviceAccountEmail: $config['service_account_email'] ?? null,
             );
         });
     }

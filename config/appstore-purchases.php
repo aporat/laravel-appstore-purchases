@@ -61,6 +61,9 @@ return [
     | token's "aud" claim) and, optionally, the service account email the
     | subscription signs with. Leave 'audience' null to skip verification.
     |
+    | Both accept a list as well, for an API that serves several Play apps
+    | whose push subscriptions sign from different Cloud projects.
+    |
     | Verification requires the google/auth package (composer require google/auth).
     |
     */

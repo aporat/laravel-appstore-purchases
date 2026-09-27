@@ -178,6 +178,23 @@ GOOGLE_PLAY_RTDN_AUDIENCE=https://api.example.com/server-notifications/google-pl
 GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL=rtdn-push@your-project.iam.gserviceaccount.com
 ```
 
+Serving several Play apps from one API, each with its own Cloud project and push subscription? Both settings accept a list, and a push is accepted when it verifies against any audience and was signed by any listed account:
+
+```php
+'google_play' => [
+    'rtdn' => [
+        'audience' => [
+            'https://api.example.com/server-notifications/google-play-callback',
+            'https://api.other.com/server-notifications/google-play-callback',
+        ],
+        'service_account_email' => [
+            'rtdn-push@project-one.iam.gserviceaccount.com',
+            'rtdn-push@project-two.iam.gserviceaccount.com',
+        ],
+    ],
+],
+```
+
 Verification uses the `google/auth` package, which is a hard dependency of this package. When no audience is configured, verification is skipped, which keeps local development and the Play Console's "Send test notification" button working — so **always set an audience in production**, or the endpoint accepts anything. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
 
 #### Events
