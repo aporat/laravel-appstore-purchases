@@ -13,12 +13,13 @@ A Laravel package for validating in-app purchase receipts, managing subscription
 
 ## ✨ Features
 
+- Built-in receipt validators for the Apple App Store (Server API and StoreKit 2), legacy iTunes, Google Play and Amazon, configured once and resolved from the container
 - Dispatches Laravel events for all App Store Server Notification types, after verifying each notification belongs to one of your configured apps
-- Dispatches Laravel events for all Google Play Real-time Developer Notification types
-- Built-in receipt validators for Apple, Google Play and Amazon
-- Simple configuration via Laravel’s container and config files
-- Supports Apple App Store Server API (AppTransaction, Get Transaction Info, etc.)
+- Dispatches Laravel events for all Google Play Real-time Developer Notification types, with Pub/Sub push authentication
+- Replay protection on both notification endpoints
 - Optional PSR-3 request/response logging via any Laravel log channel
+
+Validation itself is done by [aporat/store-receipt-validator](https://github.com/aporat/store-receipt-validator); this package wires it into Laravel.
 
 ---
 
@@ -79,7 +80,15 @@ return [
 ];
 ```
 
----
+The keys under `validators` are names you choose. Each entry builds one validator, so an API that serves several apps simply declares one entry per app.
+
+### Validator names
+
+The `validator` key accepts `apple-app-store`, `itunes`, `amazon` and
+`google-play`. Camel, studly and snake spellings of those (`appleAppStore`,
+`AppleAppStore`, `apple_app_store`) and the short aliases `apple`, `google` and
+`play` resolve to the same drivers. `AppStorePurchases::supportedValidators()`
+returns the canonical list.
 
 ### Reading the config yourself
 
@@ -87,48 +96,229 @@ The service provider is deferred: its config is merged into the application the 
 
 ---
 
-## 🪵 Logging
+## ✅ Validating Purchases
 
-Logging is disabled by default. To enable it, set the `APPSTORE_LOG_CHANNEL` environment variable to any Laravel log channel name:
-
-```env
-APPSTORE_LOG_CHANNEL=stack
-```
-
-This applies to all validators. When enabled, the underlying HTTP client emits structured log entries at the following levels:
-
-| Level | When |
-|-------|------|
-| `debug` | Outgoing request details (method, URI, environment, query params) |
-| `info` | Successful responses |
-| `warning` | API error responses (non-2xx with an error body) |
-| `error` | Connection failures and exceptions |
-
-### Notification endpoints
-
-The two notification controllers and the Pub/Sub push verifier log separately from the validators: decode failures, listener exceptions, rejected pushes (with the token's unverified claims) and one `info` line per verified push. They write to the application's default channel unless you route them elsewhere:
-
-```env
-APPSTORE_NOTIFICATIONS_LOG_CHANNEL=stack
-```
-
-### Per-validator channel
-
-You can also set a different log channel for an individual validator by adding a `log_channel` key to its config. This takes precedence over the global setting:
+`AppStorePurchases::get()` returns the validator built from the named config entry. It is the store's validator class from [store-receipt-validator](https://github.com/aporat/store-receipt-validator), so everything that library documents is available on it; the examples below cover the common path for each store.
 
 ```php
-'validators' => [
-    'apple' => [
-        'validator'   => 'apple-app-store',
-        'log_channel' => 'daily',   // overrides APPSTORE_LOG_CHANNEL for this validator
-        // ...
-    ],
-],
+use Aporat\AppStorePurchases\Facades\AppStorePurchases;
+
+$validator = AppStorePurchases::get('apple');
+```
+
+Validators are cached per name, so every caller shares one instance. The facade is typed as the library's `AbstractValidator`; narrow it with `instanceof` (or a `@var` annotation) when you want IDE completion or static analysis to see the store-specific methods.
+
+### 📲 Apple App Store
+
+StoreKit 2 apps send a signed transaction (`jwsRepresentation`) rather than an app receipt. Verify it offline, which checks Apple's signature and certificate chain and that the payload's bundle ID and environment match the validator:
+
+```php
+use Aporat\AppStorePurchases\Facades\AppStorePurchases;
+use ReceiptValidator\Exceptions\ValidationException;
+
+$validator = AppStorePurchases::get('apple');
+
+try {
+    $transaction = $validator->verifySignedTransaction($jwsRepresentation);
+} catch (ValidationException $e) {
+    // Bad signature, untrusted chain, or bundle/environment mismatch
+    abort(422, $e->getMessage());
+}
+
+$transaction->getProductId();
+$transaction->getTransactionId();
+$transaction->getOriginalTransactionId();
+$transaction->getExpiresDate();   // subscriptions only
+```
+
+A signed transaction reflects the purchase at the time it was signed. To see its current state (a later refund, for example), look it up with the App Store Server API:
+
+```php
+$current = $validator->getTransactionInfo($transaction->getTransactionId());
+
+if ($current->getRevocationDate() !== null) {
+    // refunded or revoked by Apple
+}
+```
+
+If the app still sends a full app receipt (StoreKit 1), Apple's Server API does not accept it directly. Extract the latest transaction ID and query the history for it:
+
+```php
+use ReceiptValidator\AppleAppStore\APIError;
+use ReceiptValidator\AppleAppStore\ReceiptUtility;
+use ReceiptValidator\Exceptions\ValidationException;
+
+$transactionId = ReceiptUtility::extractTransactionIdFromAppReceipt($receiptBase64Data);
+
+try {
+    $response = $validator->getTransactionHistory($transactionId);
+} catch (ValidationException $e) {
+    if ($e->getCode() === APIError::INVALID_TRANSACTION_ID->value) {
+        abort(422, 'Invalid transaction ID');
+    }
+
+    throw $e;
+}
+
+foreach ($response->getTransactions() as $transaction) {
+    $transaction->getProductId();
+    $transaction->getPurchaseDate();
+}
+
+// $response->hasMore() with $response->getRevision() pages through the rest
+```
+
+The validator covers the whole App Store Server API:
+
+| Area | Methods |
+|---|---|
+| Transactions | `getTransactionHistory()`, `getTransactionInfo()`, `getAppTransactionInfo()`, `finishTransaction()`, `setAppAccountToken()`, `sendConsumptionInformation()` |
+| Signed payloads | `verifySignedTransaction()`, `verifySignedRenewalInfo()`, `verifySignedAppTransaction()`, `verifyNotification()` |
+| Order / refunds | `lookUpOrderId()`, `getRefundHistory()` |
+| Subscriptions | `getAllSubscriptionStatuses()`, `extendSubscriptionRenewalDate()`, `extendSubscriptionRenewalDatesForAllActiveSubscribers()`, `getStatusOfSubscriptionRenewalDateExtensions()` |
+| Notifications | `requestTestNotification()`, `getTestNotificationStatus()`, `getNotificationHistory()` |
+
+> ℹ️ `validate()` on the Apple validator is deprecated upstream. Use `getTransactionInfo()` for a single transaction or `getTransactionHistory()` for paginated history.
+
+### 🍏 Apple iTunes (legacy, deprecated by Apple)
+
+The `verifyReceipt` endpoint still works for apps that have not moved to the Server API:
+
+```php
+use Aporat\AppStorePurchases\Facades\AppStorePurchases;
+use ReceiptValidator\Exceptions\ValidationException;
+
+try {
+    $response = AppStorePurchases::get('itunes')->validate($receiptBase64Data);
+} catch (ValidationException $e) {
+    abort(422, $e->getMessage());
+}
+
+$response->getBundleId();
+
+foreach ($response->getLatestReceiptInfo() as $transaction) {
+    $transaction->getProductId();
+    $transaction->getOriginalTransactionId();
+    $transaction->getExpiresDate();
+}
+```
+
+### 🤖 Google Play
+
+Authentication uses the service account from the config entry. The purchase token comes from `Purchase.getPurchaseToken()` in the app:
+
+```php
+use Aporat\AppStorePurchases\Facades\AppStorePurchases;
+use ReceiptValidator\GooglePlay\APIError;
+use ReceiptValidator\GooglePlay\APIException;
+
+$validator = AppStorePurchases::get('google-play');
+
+try {
+    $purchase = $validator->getSubscriptionPurchaseV2($purchaseToken);
+} catch (APIException $e) {
+    if ($e->isRetryable()) {            // 429, 5xx, quota or backend errors
+        // back off and try again later
+    }
+
+    if ($e->getError() === APIError::PURCHASE_TOKEN_NO_LONGER_VALID) {
+        // the token was superseded; drop it
+    }
+
+    throw $e;
+}
+
+$purchase->isEntitled();
+$purchase->getSubscriptionState();
+$purchase->getExpiryTime();
+$purchase->isTestPurchase();        // a licence-tester purchase
+
+foreach ($purchase->getLineItems() as $item) {
+    $item->getProductId();
+    $item->getBasePlanId();
+    $item->isAutoRenewEnabled();
+}
+```
+
+One-time products use the v2 product lookup, and must be acknowledged within three days or Google refunds them:
+
+```php
+$product = $validator->getProductPurchaseV2($purchaseToken);
+
+if ($product->isPurchased() && ! $product->isAcknowledged()) {
+    foreach ($product->getLineItems() as $item) {
+        $validator->acknowledgeProduct($item->getProductId(), $purchaseToken);
+    }
+}
+```
+
+| Area | Methods |
+|---|---|
+| Subscriptions | `getSubscriptionPurchaseV2()`, `acknowledgeSubscription()`, `cancelSubscription()`, `deferSubscription()`, `revokeSubscription()` |
+| One-time products | `getProductPurchaseV2()`, `getProductPurchase()`, `acknowledgeProduct()`, `consumeProduct()` |
+| Orders | `getOrder()`, `getOrders()`, `refundOrder()`, `reviewRefund()` |
+| Refunds | `getVoidedPurchases()` |
+
+> ℹ️ Google has no sandbox endpoint, so the `environment` of a Google Play entry is informational. Licence-tester purchases come back from the production API flagged as `isTestPurchase()`.
+
+### 🛒 Amazon Appstore
+
+Pass the receipt ID and user ID the app received in its `PurchaseResponse`:
+
+```php
+use Aporat\AppStorePurchases\Facades\AppStorePurchases;
+use ReceiptValidator\Amazon\APIError;
+use ReceiptValidator\Exceptions\ValidationException;
+
+try {
+    $response = AppStorePurchases::get('amazon')->validate($receiptId, $userId);
+} catch (ValidationException $e) {
+    $error = APIError::fromException($e); // null for connection failures
+
+    if ($error?->isCanceledReceipt()) {
+        // HTTP 410: the receipt was valid once. Revoke what it granted.
+    } elseif ($error?->isRetryable()) {
+        // HTTP 429 or 500: back off and try again later.
+    }
+
+    abort(422, $e->getMessage());
+}
+
+$response->getProductId();
+$response->getProductType();      // CONSUMABLE, ENTITLED or SUBSCRIPTION
+$response->isEntitled();
+$response->getExpiresAt();        // subscriptions only
+
+$transaction = $response->getTransaction();
+
+if ($transaction?->isSubscription()) {
+    $transaction->isAutoRenewing();
+    $transaction->isInFreeTrial();
+    $transaction->isInGracePeriod();
+}
+```
+
+### Validating against a different environment
+
+`get()` caches one validator per name and hands the same instance to every
+caller, so calling `setEnvironment()` on it leaks the change into unrelated
+lookups for the rest of the process (a queue worker or Octane server handling
+one sandbox receipt would point every later production lookup at the sandbox
+endpoint). Pass the environment to `get()` instead; it returns a separate,
+separately cached instance and leaves the configured one alone:
+
+```php
+use ReceiptValidator\Environment;
+
+$sandbox = AppStorePurchases::get('apple', Environment::SANDBOX);
+$sandbox = AppStorePurchases::get('apple', 'sandbox'); // strings work too
 ```
 
 ---
 
 ## 📬 Receiving Notifications
+
+### Apple App Store Server Notifications
 
 Add a route to handle server notifications from Apple:
 
@@ -156,7 +346,9 @@ A notification is rejected with `401` when its signature does not verify, when n
 
 Sandbox and production notifications are both accepted for a configured bundle ID regardless of the environment the entry itself names, since Apple sends sandbox notifications during review and to the same URL if you only register one. The validator is resolved for the notification's environment, and `$event->notification->getEnvironment()` tells listeners which it was.
 
-This controller automatically dispatches Laravel events for **all Apple App Store Server Notification types**, including:
+#### Events
+
+Every notification type is dispatched as an event under `Aporat\AppStorePurchases\Events`, all extending `PurchaseEvent`:
 
 - `ConsumptionRequest`
 - `GracePeriodExpired`
@@ -177,6 +369,23 @@ This controller automatically dispatches Laravel events for **all Apple App Stor
 - `ExternalPurchaseToken`
 - `OneTimeCharge`
 - `Test`
+
+The event carries the verified `ServerNotification`, whose transaction and renewal info are already decoded:
+
+```php
+use Aporat\AppStorePurchases\Events\SubscriptionRenewed;
+
+Event::listen(SubscriptionRenewed::class, function (SubscriptionRenewed $event) {
+    $transaction = $event->notification->getTransaction();
+
+    $receipts = SubscriptionReceipt::getByTransaction($transaction->getOriginalTransactionId());
+
+    foreach ($receipts as $receipt) {
+        $account = Account::find($receipt->account_id);
+        $account->processSubscription($transaction);
+    }
+});
+```
 
 ---
 
@@ -228,19 +437,7 @@ Serving several Play apps from one API, each with its own Cloud project and push
 ],
 ```
 
-Verification uses the `google/auth` package, which is a hard dependency of this package. When no audience is configured, verification is skipped and a warning is logged for every push accepted that way, which keeps local development and the Play Console's "Send test notification" button working — so **always set an audience in production**, or the endpoint accepts anything. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
-
-### Replay protection
-
-Both endpoints remember the IDs they have handled (Apple's `notificationUUID`, Pub/Sub's `messageId`) in a cache store and acknowledge a repeated delivery without dispatching its event again. That deduplicates the stores' own retries and stops a captured notification from being replayed at the endpoint. When one of your listeners throws and the endpoint answers `500`, the ID is released so the store's retry is processed normally.
-
-It is on by default and uses the application's default cache store with a seven-day window, the longest either store keeps retrying. Behind a load balancer use a store every server shares:
-
-```env
-APPSTORE_REPLAY_PROTECTION=true
-APPSTORE_REPLAY_CACHE_STORE=redis
-APPSTORE_REPLAY_TTL=604800
-```
+Verification uses the `google/auth` package, which is a hard dependency of this package. When no audience is configured, verification is skipped and a warning is logged for every push accepted that way, which keeps local development and the Play Console's "Send test notification" button working. **Always set an audience in production**, or the endpoint accepts anything. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
 
 #### Events
 
@@ -268,76 +465,58 @@ Event::listen(SubscriptionRenewed::class, function (SubscriptionRenewed $event) 
 
 ---
 
-## 📦 Events
+### Replay protection
 
-All App Store notification types are dispatched as Laravel events and extend a base `PurchaseEvent` class.
+Both endpoints remember the IDs they have handled (Apple's `notificationUUID`, Pub/Sub's `messageId`) in a cache store and acknowledge a repeated delivery without dispatching its event again. That deduplicates the stores' own retries and stops a captured notification from being replayed at the endpoint. When one of your listeners throws and the endpoint answers `500`, the ID is released so the store's retry is processed normally.
 
-### Example: Handling a Subscription Renewal
+It is on by default and uses the application's default cache store with a seven-day window, the longest either store keeps retrying. Behind a load balancer use a store every server shares:
 
-```php
-use Aporat\AppStorePurchases\Events\SubscriptionRenewed;
-
-Event::listen(SubscriptionRenewed::class, function ($event) {
-    $transaction = $event->notification->getTransaction();
-
-    $receipts = SubscriptionReceipt::getByTransaction($transaction->getOriginalTransactionId());
-
-    foreach ($receipts as $receipt) {
-        $account = Account::find($receipt->account_id);
-        $account->processSubscription($transaction);
-    }
-});
+```env
+APPSTORE_REPLAY_PROTECTION=true
+APPSTORE_REPLAY_CACHE_STORE=redis
+APPSTORE_REPLAY_TTL=604800
 ```
 
 ---
 
-## ✅ Manual Receipt Validation
+## 🪵 Logging
 
-You can validate a transaction ID manually:
+Logging is disabled by default. To enable it, set the `APPSTORE_LOG_CHANNEL` environment variable to any Laravel log channel name:
 
-```php
-$validator = AppStorePurchases::get('apple');
-$response = $validator->validate($transactionId);
+```env
+APPSTORE_LOG_CHANNEL=stack
 ```
 
-If you have a raw app receipt, extract the transaction ID first:
+This applies to all validators. When enabled, the underlying HTTP client emits structured log entries at the following levels:
 
-```php
-use Aporat\AppStorePurchases\Facades\AppStorePurchases;
-use ReceiptValidator\AppleAppStore\ReceiptUtility;
-use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
+| Level | When |
+|-------|------|
+| `debug` | Outgoing request details (method, URI, environment, query params) |
+| `info` | Successful responses |
+| `warning` | API error responses (non-2xx with an error body) |
+| `error` | Connection failures and exceptions |
 
-$validator = AppStorePurchases::get('apple');
+### Notification endpoints
 
-if ($validator instanceof AppleAppStoreValidator) {
-    $transactionId = ReceiptUtility::extractTransactionIdFromAppReceipt($rawAppReceipt);
-    $response = $validator->validate($transactionId);
-}
+The two notification controllers and the Pub/Sub push verifier log separately from the validators: decode failures, listener exceptions, rejected pushes (with the token's unverified claims) and one `info` line per verified push. They write to the application's default channel unless you route them elsewhere:
+
+```env
+APPSTORE_NOTIFICATIONS_LOG_CHANNEL=stack
 ```
 
-### Validating against a different environment
+### Per-validator channel
 
-`get()` caches one validator per name and hands the same instance to every
-caller, so calling `setEnvironment()` on it leaks the change into unrelated
-lookups for the rest of the process (a queue worker or Octane server handling
-one sandbox receipt would point every later production lookup at the sandbox
-endpoint). Pass the environment to `get()` instead — it returns a separate,
-separately cached instance and leaves the configured one alone:
+You can also set a different log channel for an individual validator by adding a `log_channel` key to its config. This takes precedence over the global setting:
 
 ```php
-use ReceiptValidator\Environment;
-
-$sandbox = AppStorePurchases::get('apple', Environment::SANDBOX);
-$sandbox = AppStorePurchases::get('apple', 'sandbox'); // strings work too
+'validators' => [
+    'apple' => [
+        'validator'   => 'apple-app-store',
+        'log_channel' => 'daily',   // overrides APPSTORE_LOG_CHANNEL for this validator
+        // ...
+    ],
+],
 ```
-
-### Validator names
-
-The `validator` key accepts `apple-app-store`, `itunes`, `amazon` and
-`google-play`. Camel, studly and snake spellings of those (`appleAppStore`,
-`AppleAppStore`, `apple_app_store`) and the short aliases `apple`, `google` and
-`play` resolve to the same drivers. `AppStorePurchases::supportedValidators()`
-returns the canonical list.
 
 ---
 
