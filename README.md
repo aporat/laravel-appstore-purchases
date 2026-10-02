@@ -320,3 +320,9 @@ The `validator` key accepts `apple-app-store`, `itunes`, `amazon` and
 `AppleAppStore`, `apple_app_store`) and the short aliases `apple`, `google` and
 `play` resolve to the same drivers. `AppStorePurchases::supportedValidators()`
 returns the canonical list.
+
+---
+
+## 📝 Changelog
+
+Notable changes in each release are listed in the [CHANGELOG](CHANGELOG.md).
