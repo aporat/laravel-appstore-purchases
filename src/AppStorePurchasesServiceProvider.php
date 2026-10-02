@@ -17,6 +17,7 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
         $this->app->singleton('appstore-purchases', function ($app) {
             return new AppStorePurchasesManager($app);
         });
+        $this->app->alias('appstore-purchases', AppStorePurchasesManager::class);
 
         $this->mergeConfigFrom(__DIR__.'/../config/appstore-purchases.php', 'appstore-purchases');
 
@@ -70,6 +71,7 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
     {
         return [
             'appstore-purchases',
+            AppStorePurchasesManager::class,
             PubSubPushVerifier::class,
             NotificationLogger::class,
         ];

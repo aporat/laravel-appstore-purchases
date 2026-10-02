@@ -4,6 +4,7 @@ namespace Aporat\AppStorePurchases\Tests;
 
 use Aporat\AppStorePurchases\AppStorePurchasesManager;
 use Illuminate\Log\LogManager;
+use InvalidArgumentException;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
@@ -117,7 +118,7 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("missing required 'package_name'");
 
         $manager->get('google-play');
@@ -130,7 +131,7 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("requires 'service_account_key_path' or 'service_account_json'");
 
         $manager->get('google-play');
@@ -154,7 +155,7 @@ class AppStorePurchasesManagerTest extends TestCase
     {
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Validator [unsupported] is not supported.');
 
         $manager->get('unsupported');
@@ -290,7 +291,7 @@ class AppStorePurchasesManagerTest extends TestCase
     {
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("invalid 'environment' value: staging");
 
         $manager->get('itunes', 'staging');
@@ -335,7 +336,7 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('configuration must be an array');
 
         $manager->get('broken');
@@ -377,7 +378,7 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("'environment' must be a string or Environment instance");
 
         $manager->get('itunes');
@@ -388,7 +389,7 @@ class AppStorePurchasesManagerTest extends TestCase
     {
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('App store validator [missing] is not defined.');
 
         $manager->get('missing');
@@ -403,7 +404,7 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("missing required 'validator' key");
 
         $manager->get('broken');
@@ -419,7 +420,7 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("missing required 'environment' key");
 
         $manager->get('broken');
@@ -432,7 +433,7 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("iTunes validator config is missing required 'shared_secret'");
 
         $manager->get('itunes');
@@ -445,7 +446,7 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("Amazon validator config is missing required 'developer_secret'");
 
         $manager->get('amazon');
@@ -458,10 +459,101 @@ class AppStorePurchasesManagerTest extends TestCase
 
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->expectException(\InvalidArgumentException::class);
+        $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage("Apple App Store validator config is missing required 'bundle_id'");
 
         $manager->get('apple-app-store');
+    }
+
+    #[Test]
+    public function it_passes_app_apple_id_to_the_apple_validator()
+    {
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.app_apple_id', 1234567890);
+
+        $manager = new AppStorePurchasesManager($this->app);
+        $validator = $manager->get('apple-app-store');
+
+        $this->assertInstanceOf(AppleValidator::class, $validator);
+        $this->assertSame(1234567890, $validator->getAppAppleId());
+    }
+
+    #[Test]
+    public function it_accepts_app_apple_id_as_a_numeric_string_from_env()
+    {
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.app_apple_id', '1234567890');
+
+        $manager = new AppStorePurchasesManager($this->app);
+        $validator = $manager->get('apple-app-store');
+
+        $this->assertInstanceOf(AppleValidator::class, $validator);
+        $this->assertSame(1234567890, $validator->getAppAppleId());
+    }
+
+    #[Test]
+    public function it_treats_a_missing_or_empty_app_apple_id_as_unset()
+    {
+        $validator = (new AppStorePurchasesManager($this->app))->get('apple-app-store');
+
+        $this->assertInstanceOf(AppleValidator::class, $validator);
+        $this->assertNull($validator->getAppAppleId());
+
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.app_apple_id', '');
+
+        $validator = (new AppStorePurchasesManager($this->app))->get('apple-app-store');
+
+        $this->assertInstanceOf(AppleValidator::class, $validator);
+        $this->assertNull($validator->getAppAppleId());
+    }
+
+    #[Test]
+    public function it_throws_when_app_apple_id_is_not_a_positive_integer()
+    {
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.app_apple_id', 'not-a-number');
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'app_apple_id' must be a positive integer");
+
+        (new AppStorePurchasesManager($this->app))->get('apple-app-store');
+    }
+
+    #[Test]
+    public function it_lists_apple_validators_by_bundle_id()
+    {
+        $this->app['config']->set('appstore-purchases.validators.second-app', [
+            'validator' => 'apple',
+            'key_path' => __DIR__.'/AppleAppStore/certs/testSigningKey.p8',
+            'key_id' => 'TESTKEY123',
+            'issuer_id' => 'ISSUER123',
+            'bundle_id' => 'com.example.second',
+            'environment' => Environment::PRODUCTION,
+        ]);
+        // The unpublished default config: an Apple entry with no bundle ID.
+        $this->app['config']->set('appstore-purchases.validators.placeholder', [
+            'validator' => 'apple-app-store',
+            'bundle_id' => '',
+            'environment' => Environment::SANDBOX,
+        ]);
+        // A second entry for an already-listed bundle ID loses to the first.
+        $this->app['config']->set('appstore-purchases.validators.duplicate', [
+            'validator' => 'AppleAppStore',
+            'bundle_id' => 'com.example.app',
+            'environment' => Environment::SANDBOX,
+        ]);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->assertSame([
+            'com.example.app' => 'apple-app-store',
+            'com.example.second' => 'second-app',
+        ], $manager->appleAppStoreValidatorsByBundleId());
+    }
+
+    #[Test]
+    public function it_returns_no_bundle_ids_when_no_validators_are_configured()
+    {
+        $this->app['config']->set('appstore-purchases.validators', null);
+
+        $this->assertSame([], (new AppStorePurchasesManager($this->app))->appleAppStoreValidatorsByBundleId());
     }
 
     #[Test]

@@ -30,6 +30,11 @@ return [
             'key_id' => env('APPLE_APPSTORE_KEY_ID', ''),
             'issuer_id' => env('APPLE_APPSTORE_ISSUER_ID', ''),
             'bundle_id' => env('APPLE_APPSTORE_BUNDLE_ID', ''),
+            // The app's numeric Apple ID from App Store Connect. Optional, but
+            // recommended in production: signed app transactions and server
+            // notifications must then carry it. Apple omits it from sandbox
+            // payloads, so it is not checked there.
+            'app_apple_id' => env('APPLE_APPSTORE_APP_APPLE_ID'),
             'environment' => env('APPLE_APPSTORE_ENVIRONMENT', 'SANDBOX'),
         ],
         'itunes' => [

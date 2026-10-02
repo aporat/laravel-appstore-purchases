@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aporat\AppStorePurchases\Http\Controllers;
 
+use Aporat\AppStorePurchases\AppStorePurchasesManager;
 use Aporat\AppStorePurchases\Events\ConsumptionRequest;
 use Aporat\AppStorePurchases\Events\ExternalPurchaseToken;
 use Aporat\AppStorePurchases\Events\GracePeriodExpired;
@@ -26,19 +27,46 @@ use Aporat\AppStorePurchases\Events\Test;
 use Aporat\AppStorePurchases\Logging\NotificationLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use LogicException;
 use ReceiptValidator\AppleAppStore\ServerNotification as AppleAppStoreServerNotification;
 use ReceiptValidator\AppleAppStore\ServerNotificationType as AppleAppStoreServerNotificationType;
+use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
+use ReceiptValidator\Exceptions\ValidationException;
 
+/**
+ * Receives App Store Server Notifications V2 and dispatches them as Laravel events.
+ *
+ * Every notification is verified against the Apple App Store validator
+ * configured for its bundle ID: Apple's signature and certificate chain, the
+ * bundle ID, the environment and, in production, the app Apple ID when one is
+ * configured. A notification for a bundle ID with no validator entry is
+ * rejected with 401, as is one that fails verification. Apple retries non-2xx
+ * responses a handful of times and then gives up, so a foreign or forged
+ * notification never reaches a listener.
+ *
+ * Sandbox and production notifications are both accepted for a configured
+ * bundle ID, whichever environment the entry itself names: the validator is
+ * resolved for the notification's environment, and the event exposes it.
+ *
+ * @see https://developer.apple.com/documentation/appstoreservernotifications
+ */
 final class AppleAppStoreServerNotificationController
 {
     public function __construct(
+        private readonly AppStorePurchasesManager $manager,
         private readonly NotificationLogger $logger,
     ) {}
 
     public function __invoke(Request $request): Response
     {
+        $payload = $request->all();
+
+        // Decode once to learn which app and environment the notification
+        // claims to belong to. This already checks Apple's signature; the
+        // verifier below repeats that check, which is cheap, so that every
+        // ownership rule lives in the library's verifyNotification().
         try {
-            $notification = new AppleAppStoreServerNotification($request->all());
+            $notification = new AppleAppStoreServerNotification($payload);
         } catch (\Throwable $e) {
             $this->logger->error('Failed to decode Apple App Store server notification payload', [
                 'error' => $e->getMessage(),
@@ -46,6 +74,41 @@ final class AppleAppStoreServerNotificationController
             ]);
 
             return new Response(null, Response::HTTP_BAD_REQUEST);
+        }
+
+        $bundleId = $notification->getBundleId();
+        $name = $this->manager->appleAppStoreValidatorsByBundleId()[$bundleId] ?? null;
+
+        if ($name === null) {
+            $this->logger->warning('Apple App Store server notification rejected: no validator configured for bundle ID', [
+                'bundle_id' => $bundleId,
+                'environment' => $notification->getEnvironment()->value,
+                'notification_type' => $notification->getNotificationType()->value,
+                'notification_uuid' => $notification->getNotificationUUID(),
+            ]);
+
+            return new Response(null, Response::HTTP_UNAUTHORIZED);
+        }
+
+        $validator = $this->manager->get($name, $notification->getEnvironment());
+
+        if (! $validator instanceof AppleAppStoreValidator) {
+            throw new LogicException("Validator [{$name}] is not an Apple App Store validator."); // @codeCoverageIgnore
+        }
+
+        try {
+            $notification = $validator->verifyNotification($payload);
+        } catch (ValidationException $e) {
+            $this->logger->warning('Apple App Store server notification rejected: verification failed', [
+                'error' => $e->getMessage(),
+                'validator' => $name,
+                'bundle_id' => $bundleId,
+                'environment' => $notification->getEnvironment()->value,
+                'notification_type' => $notification->getNotificationType()->value,
+                'notification_uuid' => $notification->getNotificationUUID(),
+            ]);
+
+            return new Response(null, Response::HTTP_UNAUTHORIZED);
         }
 
         $event = match ($notification->getNotificationType()) {

@@ -2,6 +2,7 @@
 
 namespace Aporat\AppStorePurchases\Tests;
 
+use Aporat\AppStorePurchases\AppStorePurchasesManager;
 use Aporat\AppStorePurchases\AppStorePurchasesServiceProvider;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -28,5 +29,14 @@ class ServiceProviderTest extends TestCase
     {
         $this->assertTrue(class_exists(AppStorePurchasesServiceProvider::class));
         $this->assertTrue($this->app->bound('appstore-purchases'));
+    }
+
+    #[Test]
+    public function it_resolves_the_manager_by_class_as_the_same_singleton(): void
+    {
+        $manager = $this->app->make(AppStorePurchasesManager::class);
+
+        $this->assertInstanceOf(AppStorePurchasesManager::class, $manager);
+        $this->assertSame($this->app->make('appstore-purchases'), $manager);
     }
 }

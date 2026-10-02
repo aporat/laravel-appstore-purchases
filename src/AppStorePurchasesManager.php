@@ -212,6 +212,39 @@ class AppStorePurchasesManager
     }
 
     /**
+     * Names of the configured Apple App Store validators, keyed by bundle ID.
+     *
+     * Used by the server-notification endpoint to pick the validator a
+     * notification must be verified against. Entries without a bundle ID
+     * (the unpublished default config) are skipped. When two entries declare
+     * the same bundle ID the first one wins.
+     *
+     * @return array<string, string>
+     */
+    public function appleAppStoreValidatorsByBundleId(): array
+    {
+        $names = [];
+
+        foreach ($this->app['config']['appstore-purchases.validators'] ?? [] as $name => $config) {
+            if (! is_array($config) || ! is_string($config['validator'] ?? null)) {
+                continue;
+            }
+
+            if ($this->normaliseDriver($config['validator']) !== 'apple-app-store') {
+                continue;
+            }
+
+            $bundleId = $config['bundle_id'] ?? null;
+
+            if (is_string($bundleId) && $bundleId !== '') {
+                $names[$bundleId] ??= (string) $name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * Retrieves a list of supported validators.
      *
      * @return array<string>
@@ -237,7 +270,34 @@ class AppStorePurchasesManager
             keyId: $config['key_id'],
             issuerId: $config['issuer_id'],
             bundleId: $config['bundle_id'],
-            environment: $config['environment']
+            environment: $config['environment'],
+            appAppleId: $this->toAppAppleId($config['app_apple_id'] ?? null),
+        );
+    }
+
+    /**
+     * Coerce the optional 'app_apple_id' config value onto an int.
+     *
+     * Env values arrive as strings, so numeric strings are accepted. Null and
+     * the empty string (an unset env variable with an empty default) mean
+     * "not configured".
+     */
+    private function toAppAppleId(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_int($value) && $value > 0) {
+            return $value;
+        }
+
+        if (is_string($value) && ctype_digit($value) && (int) $value > 0) {
+            return (int) $value;
+        }
+
+        throw new InvalidArgumentException(
+            "Apple App Store validator config 'app_apple_id' must be a positive integer."
         );
     }
 

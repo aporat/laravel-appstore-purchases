@@ -13,7 +13,7 @@ A Laravel package for validating in-app purchase receipts, managing subscription
 
 ## ✨ Features
 
-- Dispatches Laravel events for all App Store Server Notification types
+- Dispatches Laravel events for all App Store Server Notification types, after verifying each notification belongs to one of your configured apps
 - Dispatches Laravel events for all Google Play Real-time Developer Notification types
 - Built-in receipt validators for Apple, Google Play and Amazon
 - Simple configuration via Laravel’s container and config files
@@ -51,6 +51,9 @@ return [
             'key_id' => 'ABC123XYZ',
             'issuer_id' => 'DEF456UVW',
             'bundle_id' => 'com.example',
+            // Optional: the app's numeric Apple ID from App Store Connect. In production,
+            // signed app transactions and server notifications must then carry it.
+            'app_apple_id' => 1234567890,
             'environment' => Environment::SANDBOX,
         ],
         'itunes' => [
@@ -138,6 +141,14 @@ Route::prefix('server-notifications')->middleware(['throttle:60,1'])->group(func
     Route::post('apple-appstore-callback', AppleAppStoreServerNotificationController::class);
 });
 ```
+
+#### Verification
+
+Every notification is verified before any event fires. The controller reads the bundle ID from the signed payload, finds the Apple App Store validator entry with that `bundle_id`, and calls the library's `verifyNotification()` on it. That checks Apple's signature and certificate chain, the bundle ID, the environment and, for production notifications, the `app_apple_id` when one is configured. Serving several apps from one endpoint just means one validator entry per bundle ID.
+
+A notification is rejected with `401` when no entry declares its bundle ID or verification fails, and with `400` when the payload cannot be decoded. Apple retries non-2xx responses a few times and then stops, so nothing foreign or forged reaches a listener. Entries whose `bundle_id` is empty (the unpublished default) never match.
+
+Sandbox and production notifications are both accepted for a configured bundle ID regardless of the environment the entry itself names, since Apple sends sandbox notifications during review and to the same URL if you only register one. The validator is resolved for the notification's environment, and `$event->notification->getEnvironment()` tells listeners which it was.
 
 This controller automatically dispatches Laravel events for **all Apple App Store Server Notification types**, including:
 
