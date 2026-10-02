@@ -221,6 +221,58 @@ class GoogleOidcPushVerifierTest extends TestCase
     }
 
     #[Test]
+    public function it_warns_on_every_push_accepted_without_verification(): void
+    {
+        Log::spy();
+
+        $verifier = new GoogleOidcPushVerifier(audience: null);
+
+        // A production endpoint that forgot its audience must not be silent.
+        $this->assertTrue($verifier->verify($this->request(null, 'com.example.unverified')));
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'accepted without verification')
+                && ($context['package_name'] ?? null) === 'com.example.unverified')
+            ->once();
+    }
+
+    #[Test]
+    public function it_builds_per_app_expectations_from_any_spelling_of_the_google_play_driver(): void
+    {
+        config()->set('appstore-purchases.validators', [
+            'camel' => [
+                'validator' => 'googlePlay',
+                'package_name' => 'com.example.camel',
+                'rtdn' => ['audience' => 'https://camel.example.com/cb'],
+            ],
+            'snake' => [
+                'validator' => 'google_play',
+                'package_name' => 'com.example.snake',
+                'rtdn' => ['audience' => 'https://snake.example.com/cb', 'service_account_email' => 'snake@example.iam.gserviceaccount.com'],
+            ],
+            'alias' => [
+                'validator' => 'play',
+                'package_name' => 'com.example.alias',
+                'rtdn' => ['audience' => ['https://alias.example.com/cb']],
+            ],
+            'apple' => [
+                'validator' => 'apple-app-store',
+                'bundle_id' => 'com.example.apple',
+                'rtdn' => ['audience' => 'https://never.example.com/cb'],
+            ],
+        ]);
+
+        $verifier = $this->app->make(PubSubPushVerifier::class);
+        $this->assertInstanceOf(GoogleOidcPushVerifier::class, $verifier);
+
+        $this->assertSame([
+            'com.example.camel' => ['audiences' => ['https://camel.example.com/cb'], 'service_account_emails' => []],
+            'com.example.snake' => ['audiences' => ['https://snake.example.com/cb'], 'service_account_emails' => ['snake@example.iam.gserviceaccount.com']],
+            'com.example.alias' => ['audiences' => ['https://alias.example.com/cb'], 'service_account_emails' => []],
+        ], $verifier->apps());
+    }
+
+    #[Test]
     public function it_rejects_a_missing_bearer_token(): void
     {
         Log::spy();

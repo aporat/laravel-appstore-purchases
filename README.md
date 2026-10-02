@@ -81,6 +81,12 @@ return [
 
 ---
 
+### Reading the config yourself
+
+The service provider is deferred: its config is merged into the application the first time one of its services (the manager, a controller, the facade) is resolved. Package code is always past that point, but if your own code reads `config('appstore-purchases.…')` before anything has resolved the package, publish the config file so the keys exist from boot.
+
+---
+
 ## 🪵 Logging
 
 Logging is disabled by default. To enable it, set the `APPSTORE_LOG_CHANNEL` environment variable to any Laravel log channel name:
@@ -146,7 +152,7 @@ Route::prefix('server-notifications')->middleware(['throttle:60,1'])->group(func
 
 Every notification is verified before any event fires. The controller reads the bundle ID from the signed payload, finds the Apple App Store validator entry with that `bundle_id`, and calls the library's `verifyNotification()` on it. That checks Apple's signature and certificate chain, the bundle ID, the environment and, for production notifications, the `app_apple_id` when one is configured. Serving several apps from one endpoint just means one validator entry per bundle ID.
 
-A notification is rejected with `401` when no entry declares its bundle ID or verification fails, and with `400` when the payload cannot be decoded. Apple retries non-2xx responses a few times and then stops, so nothing foreign or forged reaches a listener. Entries whose `bundle_id` is empty (the unpublished default) never match.
+A notification is rejected with `401` when its signature does not verify, when no entry declares its bundle ID, or when verification fails, and with `400` when the payload cannot be decoded at all. Apple retries non-2xx responses a few times and then stops, so nothing foreign or forged reaches a listener. Entries whose `bundle_id` is empty (the unpublished default) never match.
 
 Sandbox and production notifications are both accepted for a configured bundle ID regardless of the environment the entry itself names, since Apple sends sandbox notifications during review and to the same URL if you only register one. The validator is resolved for the notification's environment, and `$event->notification->getEnvironment()` tells listeners which it was.
 
@@ -222,7 +228,19 @@ Serving several Play apps from one API, each with its own Cloud project and push
 ],
 ```
 
-Verification uses the `google/auth` package, which is a hard dependency of this package. When no audience is configured, verification is skipped, which keeps local development and the Play Console's "Send test notification" button working — so **always set an audience in production**, or the endpoint accepts anything. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
+Verification uses the `google/auth` package, which is a hard dependency of this package. When no audience is configured, verification is skipped and a warning is logged for every push accepted that way, which keeps local development and the Play Console's "Send test notification" button working — so **always set an audience in production**, or the endpoint accepts anything. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
+
+### Replay protection
+
+Both endpoints remember the IDs they have handled (Apple's `notificationUUID`, Pub/Sub's `messageId`) in a cache store and acknowledge a repeated delivery without dispatching its event again. That deduplicates the stores' own retries and stops a captured notification from being replayed at the endpoint. When one of your listeners throws and the endpoint answers `500`, the ID is released so the store's retry is processed normally.
+
+It is on by default and uses the application's default cache store with a seven-day window, the longest either store keeps retrying. Behind a load balancer use a store every server shares:
+
+```env
+APPSTORE_REPLAY_PROTECTION=true
+APPSTORE_REPLAY_CACHE_STORE=redis
+APPSTORE_REPLAY_TTL=604800
+```
 
 #### Events
 

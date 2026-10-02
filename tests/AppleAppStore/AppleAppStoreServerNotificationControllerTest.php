@@ -173,6 +173,84 @@ class AppleAppStoreServerNotificationControllerTest extends TestCase
     }
 
     #[TestAttr]
+    public function it_returns_401_when_the_signature_does_not_verify(): void
+    {
+        Event::fake([Test::class]);
+        Log::spy();
+
+        $payload = $this->loadFixturePayload();
+        $parts = explode('.', (string) $payload['signedPayload']);
+        // Flip one character of the signature segment: well-formed JWS, wrong signature.
+        $parts[2][-3] = $parts[2][-3] === 'A' ? 'B' : 'A';
+        $payload['signedPayload'] = implode('.', $parts);
+
+        $this->postJson('/apple/notifications', $payload)->assertUnauthorized();
+
+        Event::assertNotDispatched(Test::class);
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'signature verification failed')
+                && array_key_exists('payload_size', $context))
+            ->once();
+    }
+
+    #[TestAttr]
+    public function it_acknowledges_a_redelivered_notification_without_dispatching_again(): void
+    {
+        Event::fake([Test::class]);
+        Log::spy();
+
+        $payload = $this->loadFixturePayload();
+
+        $this->postJson('/apple/notifications', $payload)->assertNoContent();
+        $this->postJson('/apple/notifications', $payload)->assertNoContent();
+
+        Event::assertDispatchedTimes(Test::class, 1);
+        Log::shouldHaveReceived('info')
+            ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'acknowledging duplicate')
+                && ($context['bundle_id'] ?? null) === self::FIXTURE_BUNDLE_ID
+                && ($context['notification_type'] ?? null) === 'TEST'
+                && is_string($context['notification_uuid'] ?? null))
+            ->once();
+    }
+
+    #[TestAttr]
+    public function it_processes_the_retry_of_a_notification_whose_listener_failed(): void
+    {
+        $attempts = 0;
+        Event::listen(Test::class, function () use (&$attempts): void {
+            if (++$attempts === 1) {
+                throw new RuntimeException('listener boom');
+            }
+        });
+
+        Log::spy();
+
+        $payload = $this->loadFixturePayload();
+
+        // Apple retries after a 500 with the same notificationUUID; the claim
+        // made before the failed dispatch must have been released.
+        $this->postJson('/apple/notifications', $payload)->assertStatus(500);
+        $this->postJson('/apple/notifications', $payload)->assertNoContent();
+
+        $this->assertSame(2, $attempts);
+    }
+
+    #[TestAttr]
+    public function it_dispatches_every_delivery_when_replay_protection_is_disabled(): void
+    {
+        config()->set('appstore-purchases.replay_protection.enabled', false);
+
+        Event::fake([Test::class]);
+
+        $payload = $this->loadFixturePayload();
+
+        $this->postJson('/apple/notifications', $payload)->assertNoContent();
+        $this->postJson('/apple/notifications', $payload)->assertNoContent();
+
+        Event::assertDispatchedTimes(Test::class, 2);
+    }
+
+    #[TestAttr]
     public function it_returns_500_when_event_listener_throws(): void
     {
         Event::listen(Test::class, function (): void {

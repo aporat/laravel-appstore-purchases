@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Aporat\AppStorePurchases\Logging;
 
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Log\LogManager;
 use Psr\Log\LoggerInterface;
@@ -90,7 +91,9 @@ final class NotificationLogger implements LoggerInterface
         /** @var LogManager $manager */
         $manager = $this->app->make('log');
 
-        $channel = $this->app->make('config')->get('appstore-purchases.logging.notifications_channel');
+        /** @var ConfigRepository $config */
+        $config = $this->app->make('config');
+        $channel = $config->get('appstore-purchases.logging.notifications_channel');
 
         if (is_string($channel) && $channel !== '') {
             return $manager->channel($channel);

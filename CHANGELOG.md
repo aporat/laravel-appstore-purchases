@@ -11,6 +11,18 @@ is attributed it is to the pull request or commit that made it.
 ## [Unreleased]
 
 ### Added
+- Replay protection on both notification endpoints. `Support\NotificationReplayGuard` records each
+  handled Apple `notificationUUID` and Pub/Sub `messageId` in a cache store and a repeated delivery
+  is acknowledged (204 for Apple, `{"status": "ignored: duplicate"}` for Play) without dispatching
+  its event again. The ID is released when a listener throws so the store's retry is processed.
+  Configured under `replay_protection` (`APPSTORE_REPLAY_PROTECTION`, on by default;
+  `APPSTORE_REPLAY_CACHE_STORE`, default store when unset; `APPSTORE_REPLAY_TTL`, seven days).
+- `AppStorePurchasesManager::googlePlayRtdnExpectationsByPackageName()` collects the per-app `rtdn`
+  blocks of the configured Google Play validator entries, keyed by package name.
+- The push verifier logs a warning for every push it accepts without verification because no
+  audience is configured, so a production endpoint that forgot its audience is visible in the logs.
+- A README note on reading the package config before the deferred provider has loaded.
+- Larastan with PHPStan at level 9 (`phpstan.neon`); `composer analyze` runs it.
 - Apple App Store server notifications are verified against the configured app.
   `AppleAppStoreServerNotificationController` looks up the Apple validator whose `bundle_id`
   matches the notification, resolves it for the notification's environment and calls
@@ -50,19 +62,33 @@ is attributed it is to the pull request or commit that made it.
   is never logged), and writes an `info` line for every verified push. (commit 494f004)
 
 ### Changed
+- **Breaking:** `aporat/store-receipt-validator` is required as `^11.0` instead of `dev-main`, and
+  the package's `minimum-stability` is `stable`. Consumers no longer need to allow dev stability.
+- **Breaking:** `laravel/framework` `^12.0 || ^13.0` is required in place of `illuminate/support`.
+  The package uses the HTTP, log and foundation components, which `illuminate/support` alone does
+  not provide; every Laravel application already satisfies this.
 - **Breaking:** `AppleAppStoreServerNotificationController` now requires an Apple App Store
   validator whose `bundle_id` matches the incoming notification. Applications that relied on the
   endpoint accepting any Apple-signed notification must configure the bundle ID, and now receive a
-  401 for notifications from other apps. The controller also takes `AppStorePurchasesManager` and
-  `NotificationLogger` in its constructor. (commit 527c39e)
+  401 for notifications from other apps. The controller also takes `AppStorePurchasesManager`,
+  `NotificationLogger` and `NotificationReplayGuard` in its constructor. (commit 527c39e)
+- An Apple notification whose JWS signature does not verify is answered with 401 and a warning,
+  rather than 400; 400 is now reserved for payloads that cannot be decoded at all.
+- The service provider builds the per-app RTDN map through the manager, so any accepted spelling of
+  the Google Play driver name (`googlePlay`, `google_play`, `play`, ...) contributes its `rtdn` block.
+  Previously only the literal `google-play`, `google` and `play` did, and other spellings silently
+  fell back to the global expectations.
+- Dev tooling: `phpseclib/phpseclib` updated in the lock file from 3.0.52 to 4.0.1, clearing two
+  medium advisories (CVE-2026-55599, CVE-2026-84308); the unused `allow-plugins` entry was
+  dropped; `.gitignore` reduced to what a package produces.
 - **Breaking:** `GoogleOidcPushVerifier::__construct()` changed shape: `$audience` and
   `$serviceAccountEmail` are `string|array|null`, a new `$apps` parameter was inserted before
   `$verifier`, and a trailing `$logger` parameter was added. Code constructing the verifier with a
   positional `$verifier` must be updated.
   ([#18](https://github.com/aporat/laravel-appstore-purchases/pull/18),
   [#19](https://github.com/aporat/laravel-appstore-purchases/pull/19), commit acf43dd)
-- `GooglePlayServerNotificationController` takes `NotificationLogger` as a second constructor
-  argument. (commit acf43dd)
+- `GooglePlayServerNotificationController` takes `NotificationLogger` and `NotificationReplayGuard`
+  as further constructor arguments. (commit acf43dd)
 - Dev dependencies refreshed in the lock file: `phpstan/phpstan` 2.2.16, `laravel/pint` 1.32.1,
   `orchestra/testbench` 11.3.0 and `google/auth` 1.55.1.
   ([#20](https://github.com/aporat/laravel-appstore-purchases/pull/20),

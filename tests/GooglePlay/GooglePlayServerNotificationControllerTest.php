@@ -57,16 +57,22 @@ class GooglePlayServerNotificationControllerTest extends TestCase
         return [AppStorePurchasesServiceProvider::class];
     }
 
+    private static int $messageSequence = 0;
+
     /**
+     * Wrap a notification in a Pub/Sub push envelope. Each envelope gets a
+     * fresh message ID unless one is given, since the replay guard treats a
+     * repeated ID as a duplicate delivery.
+     *
      * @param  array<string, mixed>  $notification
      * @return array<string, mixed>
      */
-    private function envelope(array $notification): array
+    private function envelope(array $notification, ?string $messageId = null): array
     {
         return [
             'message' => [
                 'data' => base64_encode((string) json_encode($notification)),
-                'messageId' => '1234567890',
+                'messageId' => $messageId ?? (string) (1234567890 + ++self::$messageSequence),
                 'publishTime' => '2026-09-05T15:00:00.000Z',
             ],
             'subscription' => 'projects/test-project/subscriptions/rtdn-push',
@@ -184,9 +190,9 @@ class GooglePlayServerNotificationControllerTest extends TestCase
 
         Event::assertDispatched(SubscriptionUnknown::class);
         Log::shouldHaveReceived('warning')
-            ->once()
             ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'no mapped event')
-                && ($context['notification_type'] ?? null) === 99);
+                && ($context['notification_type'] ?? null) === 99)
+            ->once();
     }
 
     #[TestAttr]
@@ -269,6 +275,91 @@ class GooglePlayServerNotificationControllerTest extends TestCase
             ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'listener threw an exception')
                 && ($context['event'] ?? null) === Test::class
                 && ($context['package_name'] ?? null) === 'app.example');
+    }
+
+    #[TestAttr]
+    public function it_acknowledges_a_redelivered_message_without_dispatching_again(): void
+    {
+        Event::fake([Test::class]);
+        Log::spy();
+
+        $envelope = $this->envelope($this->fixture('rtdnTest'), 'msg-redelivered');
+
+        $this->postJson('/google-play/notifications', $envelope)->assertOk()->assertJson(['status' => 'handled']);
+        $this->postJson('/google-play/notifications', $envelope)->assertOk()->assertJson(['status' => 'ignored: duplicate']);
+
+        Event::assertDispatchedTimes(Test::class, 1);
+        Log::shouldHaveReceived('info')
+            ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'acknowledging duplicate')
+                && ($context['message_id'] ?? null) === 'msg-redelivered'
+                && ($context['package_name'] ?? null) === 'app.example')
+            ->once();
+    }
+
+    #[TestAttr]
+    public function it_processes_the_retry_of_a_message_whose_listener_failed(): void
+    {
+        $attempts = 0;
+        Event::listen(Test::class, function () use (&$attempts): void {
+            if (++$attempts === 1) {
+                throw new RuntimeException('listener boom');
+            }
+        });
+
+        Log::spy();
+
+        $envelope = $this->envelope($this->fixture('rtdnTest'), 'msg-retried');
+
+        // Pub/Sub redelivers after a 500 with the same message ID; the claim
+        // made before the failed dispatch must have been released.
+        $this->postJson('/google-play/notifications', $envelope)->assertStatus(500);
+        $this->postJson('/google-play/notifications', $envelope)->assertOk()->assertJson(['status' => 'handled']);
+
+        $this->assertSame(2, $attempts);
+    }
+
+    #[TestAttr]
+    public function it_dispatches_every_delivery_when_replay_protection_is_disabled(): void
+    {
+        config()->set('appstore-purchases.replay_protection.enabled', false);
+
+        Event::fake([Test::class]);
+
+        $envelope = $this->envelope($this->fixture('rtdnTest'), 'msg-unguarded');
+
+        $this->postJson('/google-play/notifications', $envelope)->assertOk();
+        $this->postJson('/google-play/notifications', $envelope)->assertOk()->assertJson(['status' => 'handled']);
+
+        Event::assertDispatchedTimes(Test::class, 2);
+    }
+
+    #[TestAttr]
+    public function it_cannot_deduplicate_an_envelope_without_a_message_id(): void
+    {
+        Event::fake([Test::class]);
+
+        $envelope = $this->envelope($this->fixture('rtdnTest'));
+        unset($envelope['message']['messageId']);
+
+        $this->postJson('/google-play/notifications', $envelope)->assertOk();
+        $this->postJson('/google-play/notifications', $envelope)->assertOk()->assertJson(['status' => 'handled']);
+
+        Event::assertDispatchedTimes(Test::class, 2);
+    }
+
+    #[TestAttr]
+    public function it_reads_the_snake_case_message_id_spelling(): void
+    {
+        Event::fake([Test::class]);
+
+        $envelope = $this->envelope($this->fixture('rtdnTest'));
+        unset($envelope['message']['messageId']);
+        $envelope['message']['message_id'] = 'msg-snake';
+
+        $this->postJson('/google-play/notifications', $envelope)->assertOk();
+        $this->postJson('/google-play/notifications', $envelope)->assertOk()->assertJson(['status' => 'ignored: duplicate']);
+
+        Event::assertDispatchedTimes(Test::class, 1);
     }
 
     #[TestAttr]

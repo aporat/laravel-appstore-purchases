@@ -23,6 +23,26 @@ return [
         'notifications_channel' => env('APPSTORE_NOTIFICATIONS_LOG_CHANNEL'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Replay Protection
+    |--------------------------------------------------------------------------
+    |
+    | Both notification endpoints remember the IDs they have handled (Apple's
+    | notificationUUID, Pub/Sub's messageId) in a cache store for 'ttl'
+    | seconds and acknowledge a repeated delivery without dispatching its
+    | event again. This deduplicates store retries and stops a captured
+    | notification from being replayed. Use a shared store (redis, database)
+    | behind a load balancer; null uses the application's default store.
+    |
+    */
+
+    'replay_protection' => [
+        'enabled' => (bool) env('APPSTORE_REPLAY_PROTECTION', true),
+        'store' => env('APPSTORE_REPLAY_CACHE_STORE'),
+        'ttl' => (int) env('APPSTORE_REPLAY_TTL', 604800),
+    ],
+
     'validators' => [
         'apple' => [
             'validator' => 'apple-app-store',
@@ -84,7 +104,8 @@ return [
     | validator entry above can carry its own 'rtdn' block, which is used
     | instead for notifications with that entry's package name.
     |
-    | Verification requires the google/auth package (composer require google/auth).
+    | With no audience configured every push is accepted and a warning is
+    | logged for each one. Always set an audience in production.
     |
     */
 
