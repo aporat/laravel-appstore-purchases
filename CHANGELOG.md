@@ -10,6 +10,8 @@ is attributed it is to the pull request or commit that made it.
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-10-02
+
 ### Added
 - Replay protection on both notification endpoints. `Support\NotificationReplayGuard` records each
   handled Apple `notificationUUID` and Pub/Sub `messageId` in a cache store and a repeated delivery
@@ -289,7 +291,8 @@ is attributed it is to the pull request or commit that made it.
   `^10.0 || ^11.0 || ^12.0` and `aporat/store-receipt-validator` `dev-main`, with
   `laravel/pint`, `phpunit/phpunit` 12 and `orchestra/testbench` 10 for development.
 
-[Unreleased]: https://github.com/aporat/laravel-appstore-purchases/compare/3.0.0...HEAD
+[Unreleased]: https://github.com/aporat/laravel-appstore-purchases/compare/4.0.0...HEAD
+[4.0.0]: https://github.com/aporat/laravel-appstore-purchases/compare/3.0.0...4.0.0
 [3.0.0]: https://github.com/aporat/laravel-appstore-purchases/compare/2.0.0...3.0.0
 [2.0.0]: https://github.com/aporat/laravel-appstore-purchases/compare/1.0.2...2.0.0
 [1.0.2]: https://github.com/aporat/laravel-appstore-purchases/compare/1.0.0...1.0.2
