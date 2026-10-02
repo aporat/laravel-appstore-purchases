@@ -29,16 +29,17 @@
     "php": "^8.4",
     "ext-json": "*",
     "ext-openssl": "*",
-    "illuminate/support": "^12.0 || ^13.0",
-    "aporat/store-receipt-validator": "dev-main",
+    "laravel/framework": "^12.0 || ^13.0",
+    "aporat/store-receipt-validator": "^11.0",
     "google/auth": "^1.47"
   },
   "require-dev": {
-    "orchestra/testbench": "^10.0 || ^11.0",
+    "larastan/larastan": "^3.0",
     "laravel/pint": "^1.21",
+    "mockery/mockery": "^1.6",
+    "orchestra/testbench": "^10.0 || ^11.0",
     "phpstan/phpstan": "^2.0",
-    "phpunit/phpunit": "^12.0 || ^13.0",
-    "mockery/mockery": "^1.6"
+    "phpunit/phpunit": "^12.0 || ^13.0"
   },
   "autoload": {
     "psr-4": {
@@ -53,10 +54,7 @@
   "config": {
     "sort-packages": true,
     "optimize-autoloader": true,
-    "preferred-install": "dist",
-    "allow-plugins": {
-      "dealerdirect/phpcodesniffer-composer-installer": true
-    }
+    "preferred-install": "dist"
   },
   "extra": {
     "laravel": {
@@ -69,12 +67,12 @@
     "test": "vendor/bin/phpunit",
     "test-ci": "vendor/bin/phpunit --coverage-text --coverage-clover coverage.xml --log-junit junit.xml",
     "check": "vendor/bin/pint --test",
-    "analyze": "vendor/bin/phpstan analyse src --level=5 --memory-limit=-1"
+    "analyze": "vendor/bin/phpstan analyse --memory-limit=-1"
   },
   "support": {
     "issues": "https://github.com/aporat/laravel-appstore-purchases/issues",
     "source": "https://github.com/aporat/laravel-appstore-purchases"
   },
-  "minimum-stability": "dev",
+  "minimum-stability": "stable",
   "prefer-stable": true
 }

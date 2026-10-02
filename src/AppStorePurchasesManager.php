@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Aporat\AppStorePurchases;
 
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Log\LogManager;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 use ReceiptValidator\AbstractValidator;
@@ -102,7 +104,7 @@ class AppStorePurchasesManager
      */
     protected function getConfig(string $name): array
     {
-        $config = $this->app['config']["appstore-purchases.validators.{$name}"];
+        $config = $this->config()->get("appstore-purchases.validators.{$name}");
 
         if (is_null($config)) {
             throw new InvalidArgumentException("App store validator [{$name}] is not defined.");
@@ -122,6 +124,7 @@ class AppStorePurchasesManager
 
         $config['environment'] = $this->toEnvironment($config['environment'], $name);
 
+        /** @var array<string, mixed> $config */
         return $config;
     }
 
@@ -132,14 +135,15 @@ class AppStorePurchasesManager
      */
     public function build(array $config): AbstractValidator
     {
-        $driver = $this->normaliseDriver((string) ($config['validator'] ?? ''));
+        $validatorName = is_scalar($config['validator'] ?? null) ? (string) $config['validator'] : '';
+        $driver = $this->normaliseDriver($validatorName);
 
         if (! isset(self::DRIVERS[$driver])) {
-            throw new InvalidArgumentException("Validator [{$config['validator']}] is not supported.");
+            throw new InvalidArgumentException("Validator [{$validatorName}] is not supported.");
         }
 
         if (! array_key_exists('environment', $config)) {
-            throw new InvalidArgumentException("Validator [{$config['validator']}] is missing required 'environment' key.");
+            throw new InvalidArgumentException("Validator [{$validatorName}] is missing required 'environment' key.");
         }
 
         $config['environment'] = $this->toEnvironment($config['environment'], $driver);
@@ -202,13 +206,16 @@ class AppStorePurchasesManager
      */
     protected function resolveLogger(array $config): ?LoggerInterface
     {
-        $channel = $config['log_channel'] ?? $this->app['config']['appstore-purchases.logging.channel'] ?? null;
+        $channel = $config['log_channel'] ?? $this->config()->get('appstore-purchases.logging.channel');
 
         if (! is_string($channel) || $channel === '') {
             return null;
         }
 
-        return $this->app->make('log')->channel($channel);
+        /** @var LogManager $log */
+        $log = $this->app->make('log');
+
+        return $log->channel($channel);
     }
 
     /**
@@ -225,23 +232,84 @@ class AppStorePurchasesManager
     {
         $names = [];
 
-        foreach ($this->app['config']['appstore-purchases.validators'] ?? [] as $name => $config) {
-            if (! is_array($config) || ! is_string($config['validator'] ?? null)) {
-                continue;
-            }
-
-            if ($this->normaliseDriver($config['validator']) !== 'apple-app-store') {
+        foreach ($this->validatorConfigs() as $name => $config) {
+            if (! is_string($config['validator'] ?? null) || $this->normaliseDriver($config['validator']) !== 'apple-app-store') {
                 continue;
             }
 
             $bundleId = $config['bundle_id'] ?? null;
 
             if (is_string($bundleId) && $bundleId !== '') {
-                $names[$bundleId] ??= (string) $name;
+                $names[$bundleId] ??= $name;
             }
         }
 
         return $names;
+    }
+
+    /**
+     * Per-app Real-time Developer Notification expectations, keyed by Play
+     * package name.
+     *
+     * Collects the 'rtdn' block of every configured Google Play validator
+     * entry (whatever spelling of the driver name it uses) that names a
+     * package. The push verifier checks a notification carrying that package
+     * name against this block instead of the global 'google_play.rtdn' one.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function googlePlayRtdnExpectationsByPackageName(): array
+    {
+        $apps = [];
+
+        foreach ($this->validatorConfigs() as $config) {
+            if (! is_string($config['validator'] ?? null) || $this->normaliseDriver($config['validator']) !== 'google-play') {
+                continue;
+            }
+
+            $packageName = $config['package_name'] ?? null;
+            $rtdn = $config['rtdn'] ?? null;
+
+            if (is_string($packageName) && $packageName !== '' && is_array($rtdn)) {
+                /** @var array<string, mixed> $rtdn */
+                $apps[$packageName] ??= $rtdn;
+            }
+        }
+
+        return $apps;
+    }
+
+    /**
+     * Every configured validator entry that is an array, keyed by name.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function validatorConfigs(): array
+    {
+        $configs = $this->config()->get('appstore-purchases.validators');
+
+        if (! is_array($configs)) {
+            return [];
+        }
+
+        $arrays = [];
+
+        foreach ($configs as $name => $config) {
+            if (is_array($config)) {
+                /** @var array<string, mixed> $config */
+                $arrays[(string) $name] = $config;
+            }
+        }
+
+        return $arrays;
+    }
+
+    private function config(): ConfigRepository
+    {
+        /** @var ConfigRepository $config */
+        $config = $this->app->make('config');
+
+        return $config;
     }
 
     /**
@@ -270,9 +338,25 @@ class AppStorePurchasesManager
             keyId: $config['key_id'],
             issuerId: $config['issuer_id'],
             bundleId: $config['bundle_id'],
-            environment: $config['environment'],
+            environment: $this->environmentOf($config),
             appAppleId: $this->toAppAppleId($config['app_apple_id'] ?? null),
         );
+    }
+
+    /**
+     * The environment build() already coerced onto the enum.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private function environmentOf(array $config): Environment
+    {
+        $environment = $config['environment'] ?? null;
+
+        if (! $environment instanceof Environment) {
+            throw new InvalidArgumentException("Validator config 'environment' must be resolved before building."); // @codeCoverageIgnore
+        }
+
+        return $environment;
     }
 
     /**
@@ -312,7 +396,7 @@ class AppStorePurchasesManager
 
         return new iTunesValidator(
             sharedSecret: $config['shared_secret'],
-            environment: $config['environment']
+            environment: $this->environmentOf($config)
         );
     }
 
@@ -347,7 +431,7 @@ class AppStorePurchasesManager
         return new GooglePlayValidator(
             packageName: $config['package_name'],
             credentials: $json,
-            environment: $config['environment']
+            environment: $this->environmentOf($config)
         );
     }
 
@@ -362,7 +446,7 @@ class AppStorePurchasesManager
 
         return new AmazonValidator(
             developerSecret: $config['developer_secret'],
-            environment: $config['environment']
+            environment: $this->environmentOf($config)
         );
     }
 

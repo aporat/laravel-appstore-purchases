@@ -12,8 +12,10 @@ use ReceiptValidator\AbstractValidator;
  * Facade for the App Store Purchases manager.
  *
  * @method static AbstractValidator get(string $name, \ReceiptValidator\Environment|string|null $environment = null)
- * @method static AbstractValidator build(array $config)
+ * @method static AbstractValidator build(array<string, mixed> $config)
  * @method static array<string> supportedValidators()
+ * @method static array<string, string> appleAppStoreValidatorsByBundleId()
+ * @method static array<string, array<string, mixed>> googlePlayRtdnExpectationsByPackageName()
  *
  * @see AppStorePurchasesManager
  * @see AbstractValidator

@@ -32,6 +32,7 @@ use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionRevoked;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionUnknown;
 use Aporat\AppStorePurchases\Events\GooglePlay\Test;
 use Aporat\AppStorePurchases\Logging\NotificationLogger;
+use Aporat\AppStorePurchases\Support\NotificationReplayGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use ReceiptValidator\GooglePlay\OneTimeProductNotificationType;
@@ -46,14 +47,20 @@ use ReceiptValidator\GooglePlay\SubscriptionNotificationType;
  * for up to seven days. A payload that cannot be decoded will never become
  * decodable, so it is acknowledged with a 200 and logged. A listener failure
  * returns 500 so the message is retried. Only a failed push verification answers 401.
+ * A message whose ID was already handled within the replay-protection window
+ * is acknowledged with 200 and not dispatched again.
  *
  * @see https://developer.android.com/google/play/billing/rtdn-reference
  */
 final class GooglePlayServerNotificationController
 {
+    /** The replay-guard source under which Pub/Sub message IDs are recorded. */
+    private const string REPLAY_SOURCE = 'google-play';
+
     public function __construct(
         private readonly PubSubPushVerifier $verifier,
         private readonly NotificationLogger $logger,
+        private readonly NotificationReplayGuard $replayGuard,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -73,6 +80,18 @@ final class GooglePlayServerNotificationController
             return $this->ack('ignored: undecodable payload');
         }
 
+        $messageId = self::messageIdFrom($request);
+
+        if (! $this->replayGuard->claim(self::REPLAY_SOURCE, $messageId)) {
+            $this->logger->info('Google Play developer notification already handled; acknowledging duplicate', [
+                'message_id' => $messageId,
+                'package_name' => $notification->getPackageName(),
+                'purchase_token' => $notification->getPurchaseToken(),
+            ]);
+
+            return $this->ack('ignored: duplicate');
+        }
+
         $event = $this->eventFor($notification);
 
         try {
@@ -86,10 +105,26 @@ final class GooglePlayServerNotificationController
                 'purchase_token' => $notification->getPurchaseToken(),
             ]);
 
+            // Pub/Sub redelivers on 500 with the same message ID; that retry
+            // must be processed, not acknowledged as a duplicate.
+            $this->replayGuard->release(self::REPLAY_SOURCE, $messageId);
+
             return new JsonResponse(null, JsonResponse::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         return $this->ack('handled');
+    }
+
+    /**
+     * The Pub/Sub message ID from the push envelope (`message.messageId`, or
+     * `message.message_id` in the older spelling), or an empty string when the
+     * envelope carries none, in which case no replay check is possible.
+     */
+    private static function messageIdFrom(Request $request): string
+    {
+        $id = $request->input('message.messageId') ?? $request->input('message.message_id');
+
+        return is_scalar($id) ? (string) $id : '';
     }
 
     private function eventFor(ServerNotification $notification): GooglePlayEvent

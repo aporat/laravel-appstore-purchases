@@ -25,6 +25,7 @@ use Aporat\AppStorePurchases\Events\SubscriptionRenewalExtension;
 use Aporat\AppStorePurchases\Events\SubscriptionRenewed;
 use Aporat\AppStorePurchases\Events\Test;
 use Aporat\AppStorePurchases\Logging\NotificationLogger;
+use Aporat\AppStorePurchases\Support\NotificationReplayGuard;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use LogicException;
@@ -48,13 +49,20 @@ use ReceiptValidator\Exceptions\ValidationException;
  * bundle ID, whichever environment the entry itself names: the validator is
  * resolved for the notification's environment, and the event exposes it.
  *
+ * A notification whose UUID was already handled within the replay-protection
+ * window is acknowledged with 204 and not dispatched again.
+ *
  * @see https://developer.apple.com/documentation/appstoreservernotifications
  */
 final class AppleAppStoreServerNotificationController
 {
+    /** The replay-guard source under which Apple notification UUIDs are recorded. */
+    private const string REPLAY_SOURCE = 'apple';
+
     public function __construct(
         private readonly AppStorePurchasesManager $manager,
         private readonly NotificationLogger $logger,
+        private readonly NotificationReplayGuard $replayGuard,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -67,13 +75,19 @@ final class AppleAppStoreServerNotificationController
         // ownership rule lives in the library's verifyNotification().
         try {
             $notification = new AppleAppStoreServerNotification($payload);
-        } catch (\Throwable $e) {
-            $this->logger->error('Failed to decode Apple App Store server notification payload', [
-                'error' => $e->getMessage(),
-                'payload_size' => strlen((string) $request->getContent()),
-            ]);
+        } catch (ValidationException $e) {
+            if (self::isSignatureFailure($e)) {
+                $this->logger->warning('Apple App Store server notification rejected: signature verification failed', [
+                    'error' => $e->getMessage(),
+                    'payload_size' => strlen((string) $request->getContent()),
+                ]);
 
-            return new Response(null, Response::HTTP_BAD_REQUEST);
+                return new Response(null, Response::HTTP_UNAUTHORIZED);
+            }
+
+            return $this->undecodable($request, $e);
+        } catch (\Throwable $e) {
+            return $this->undecodable($request, $e);
         }
 
         $bundleId = $notification->getBundleId();
@@ -109,6 +123,19 @@ final class AppleAppStoreServerNotificationController
             ]);
 
             return new Response(null, Response::HTTP_UNAUTHORIZED);
+        }
+
+        $uuid = $notification->getNotificationUUID();
+
+        if (! $this->replayGuard->claim(self::REPLAY_SOURCE, $uuid)) {
+            $this->logger->info('Apple App Store server notification already handled; acknowledging duplicate', [
+                'bundle_id' => $bundleId,
+                'environment' => $notification->getEnvironment()->value,
+                'notification_type' => $notification->getNotificationType()->value,
+                'notification_uuid' => $uuid,
+            ]);
+
+            return new Response(null, Response::HTTP_NO_CONTENT);
         }
 
         $event = match ($notification->getNotificationType()) {
@@ -147,13 +174,38 @@ final class AppleAppStoreServerNotificationController
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
                     'notification_type' => $notification->getNotificationType()->value,
-                    'notification_uuid' => $notification->getNotificationUUID(),
+                    'notification_uuid' => $uuid,
                 ]);
+
+                // Apple retries on 500 with the same UUID; that retry must be
+                // processed, not acknowledged as a duplicate.
+                $this->replayGuard->release(self::REPLAY_SOURCE, $uuid);
 
                 return new Response(null, Response::HTTP_INTERNAL_SERVER_ERROR);
             }
         }
 
         return new Response(null, Response::HTTP_NO_CONTENT);
+    }
+
+    private function undecodable(Request $request, \Throwable $e): Response
+    {
+        $this->logger->error('Failed to decode Apple App Store server notification payload', [
+            'error' => $e->getMessage(),
+            'payload_size' => strlen((string) $request->getContent()),
+        ]);
+
+        return new Response(null, Response::HTTP_BAD_REQUEST);
+    }
+
+    /**
+     * Whether the library rejected the payload because Apple's signature or
+     * certificate chain did not verify, as opposed to it being malformed.
+     * The library signals both with ValidationException; only the message
+     * tells them apart.
+     */
+    private static function isSignatureFailure(ValidationException $e): bool
+    {
+        return str_contains(strtolower($e->getMessage()), 'signature');
     }
 }

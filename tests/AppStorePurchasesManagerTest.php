@@ -557,6 +557,55 @@ class AppStorePurchasesManagerTest extends TestCase
     }
 
     #[Test]
+    public function it_collects_google_play_rtdn_expectations_by_package_name()
+    {
+        $this->app['config']->set('appstore-purchases.validators', [
+            'one' => [
+                'validator' => 'google-play',
+                'package_name' => 'com.example.one',
+                'rtdn' => ['audience' => 'https://one.example.com/cb'],
+            ],
+            'two' => [
+                'validator' => 'GooglePlay',
+                'package_name' => 'com.example.two',
+                'rtdn' => ['audience' => ['https://two.example.com/cb'], 'service_account_email' => 'two@example.iam.gserviceaccount.com'],
+            ],
+            'no-rtdn' => [
+                'validator' => 'google-play',
+                'package_name' => 'com.example.plain',
+            ],
+            'no-package' => [
+                'validator' => 'google-play',
+                'rtdn' => ['audience' => 'https://nowhere.example.com/cb'],
+            ],
+            'duplicate' => [
+                'validator' => 'google',
+                'package_name' => 'com.example.one',
+                'rtdn' => ['audience' => 'https://loser.example.com/cb'],
+            ],
+            'apple' => [
+                'validator' => 'apple-app-store',
+                'package_name' => 'com.example.apple',
+                'rtdn' => ['audience' => 'https://apple.example.com/cb'],
+            ],
+            'broken' => 'not-an-array',
+        ]);
+
+        $this->assertSame([
+            'com.example.one' => ['audience' => 'https://one.example.com/cb'],
+            'com.example.two' => ['audience' => ['https://two.example.com/cb'], 'service_account_email' => 'two@example.iam.gserviceaccount.com'],
+        ], (new AppStorePurchasesManager($this->app))->googlePlayRtdnExpectationsByPackageName());
+    }
+
+    #[Test]
+    public function it_returns_no_rtdn_expectations_when_no_validators_are_configured()
+    {
+        $this->app['config']->set('appstore-purchases.validators', null);
+
+        $this->assertSame([], (new AppStorePurchasesManager($this->app))->googlePlayRtdnExpectationsByPackageName());
+    }
+
+    #[Test]
     public function it_exposes_supported_validators()
     {
         $manager = new AppStorePurchasesManager($this->app);

@@ -64,8 +64,8 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
     /**
      * @param  string|list<string>|null  $audience  Default accepted audience(s); null or empty disables verification for packages without their own entry.
      * @param  string|list<string>|null  $serviceAccountEmail  Default accepted signing account(s); null or empty skips the email check.
-     * @param  array<int|string, array{audience?: string|list<string>|null, service_account_email?: string|list<string>|null}>  $apps
-     *                                                                                                                                 Per-package overrides, keyed by Play package name.
+     * @param  array<int|string, array<string, mixed>>  $apps  Per-package overrides, keyed by Play package name, each with an
+     *                                                         optional 'audience' and 'service_account_email' (string or list).
      * @param  (callable(string, array<string, mixed>): (array<string, mixed>|false))|null  $verifier
      *                                                                                                 Override the token verification call (primarily for testing). Defaults to google/auth.
      * @param  LoggerInterface|null  $logger  Where rejections and verifications are logged; the application's default logger when null.
@@ -134,6 +134,12 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
         ['audiences' => $audiences, 'service_account_emails' => $emails] = $this->expectationsFor($packageName);
 
         if ($audiences === []) {
+            // Accepted, but say so: a production endpoint that forgot its
+            // audience must not look identical to one that verified the push.
+            $this->log()->warning('Google Play RTDN push accepted without verification: no audience is configured.', [
+                'package_name' => $packageName,
+            ]);
+
             return true;
         }
 
@@ -294,12 +300,12 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
     }
 
     /**
-     * Accept a single value or a list, dropping nulls and empty strings.
+     * Accept a single value or a list, dropping nulls, empty strings and
+     * anything that is not a string.
      *
-     * @param  string|array<int|string, mixed>|null  $value
      * @return list<string>
      */
-    private static function normalise(string|array|null $value): array
+    private static function normalise(mixed $value): array
     {
         $values = is_array($value) ? $value : [$value];
 
@@ -311,7 +317,14 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
 
     private function log(): LoggerInterface
     {
-        return $this->logger ?? Log::getFacadeRoot();
+        if ($this->logger !== null) {
+            return $this->logger;
+        }
+
+        /** @var LoggerInterface $logger */
+        $logger = Log::getFacadeRoot();
+
+        return $logger;
     }
 
     /**
