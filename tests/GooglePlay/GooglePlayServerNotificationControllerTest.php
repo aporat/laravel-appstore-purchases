@@ -10,17 +10,21 @@ use Aporat\AppStorePurchases\Events\GooglePlay\GooglePlayEvent;
 use Aporat\AppStorePurchases\Events\GooglePlay\OneTimeProductCanceled;
 use Aporat\AppStorePurchases\Events\GooglePlay\OneTimeProductPurchased;
 use Aporat\AppStorePurchases\Events\GooglePlay\OneTimeProductUnknown;
+use Aporat\AppStorePurchases\Events\GooglePlay\PendingRefundReview;
 use Aporat\AppStorePurchases\Events\GooglePlay\PurchaseVoided;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionCanceled;
+use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionCancellationScheduled;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionDeferred;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionExpired;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionInGracePeriod;
+use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionItemsChanged;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionOnHold;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPaused;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPauseScheduleChanged;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPendingPurchaseCanceled;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPriceChangeConfirmed;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPriceChangeUpdated;
+use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPriceStepUpConsentUpdated;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPurchased;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionRecovered;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionRenewed;
@@ -36,6 +40,7 @@ use Illuminate\Support\Facades\Route;
 use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test as TestAttr;
+use ReceiptValidator\GooglePlay\SubscriptionNotificationType;
 use RuntimeException;
 
 class GooglePlayServerNotificationControllerTest extends TestCase
@@ -128,8 +133,25 @@ class GooglePlayServerNotificationControllerTest extends TestCase
         yield 'pause schedule changed' => [11, SubscriptionPauseScheduleChanged::class];
         yield 'revoked' => [12, SubscriptionRevoked::class];
         yield 'expired' => [13, SubscriptionExpired::class];
+        yield 'items changed' => [17, SubscriptionItemsChanged::class];
+        yield 'cancellation scheduled' => [18, SubscriptionCancellationScheduled::class];
         yield 'price change updated' => [19, SubscriptionPriceChangeUpdated::class];
         yield 'pending purchase canceled' => [20, SubscriptionPendingPurchaseCanceled::class];
+        yield 'price step-up consent updated' => [22, SubscriptionPriceStepUpConsentUpdated::class];
+    }
+
+    #[TestAttr]
+    public function it_covers_every_subscription_notification_type_the_validator_knows(): void
+    {
+        $covered = array_map(static fn (array $row): int => $row[0], iterator_to_array(self::subscriptionTypes()));
+        $known = array_map(
+            static fn (SubscriptionNotificationType $type): int => $type->value,
+            array_filter(SubscriptionNotificationType::cases(), static fn (SubscriptionNotificationType $type): bool => $type !== SubscriptionNotificationType::UNKNOWN),
+        );
+
+        // A case added to the validator with no arm in the controller's match
+        // throws UnhandledMatchError on the first real notification of that type.
+        $this->assertSame([], array_values(array_diff($known, $covered)), 'Subscription notification types with no mapped event');
     }
 
     /**
@@ -196,6 +218,21 @@ class GooglePlayServerNotificationControllerTest extends TestCase
 
         Event::assertDispatched(PurchaseVoided::class, function (PurchaseVoided $event): bool {
             return $event->notification->getVoidedPurchaseNotification()?->getOrderId() === 'GPA.1000-2000-3000-40000';
+        });
+    }
+
+    #[TestAttr]
+    public function it_dispatches_pending_refund_review(): void
+    {
+        Event::fake([PendingRefundReview::class]);
+
+        $this->postJson('/google-play/notifications', $this->envelope($this->fixture('rtdnPendingRefundReview')))->assertOk();
+
+        Event::assertDispatched(PendingRefundReview::class, function (PendingRefundReview $event): bool {
+            $payload = $event->notification->getPendingRefundReviewNotification();
+
+            return $payload?->getOrderId() === 'GPA.1234-5678-9012-34567'
+                && $payload->getPendingRefundToken() === 'pending-refund-token-123';
         });
     }
 

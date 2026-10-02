@@ -9,17 +9,21 @@ use Aporat\AppStorePurchases\Events\GooglePlay\GooglePlayEvent;
 use Aporat\AppStorePurchases\Events\GooglePlay\OneTimeProductCanceled;
 use Aporat\AppStorePurchases\Events\GooglePlay\OneTimeProductPurchased;
 use Aporat\AppStorePurchases\Events\GooglePlay\OneTimeProductUnknown;
+use Aporat\AppStorePurchases\Events\GooglePlay\PendingRefundReview;
 use Aporat\AppStorePurchases\Events\GooglePlay\PurchaseVoided;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionCanceled;
+use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionCancellationScheduled;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionDeferred;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionExpired;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionInGracePeriod;
+use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionItemsChanged;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionOnHold;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPaused;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPauseScheduleChanged;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPendingPurchaseCanceled;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPriceChangeConfirmed;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPriceChangeUpdated;
+use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPriceStepUpConsentUpdated;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionPurchased;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionRecovered;
 use Aporat\AppStorePurchases\Events\GooglePlay\SubscriptionRenewed;
@@ -98,6 +102,10 @@ final class GooglePlayServerNotificationController
             return new PurchaseVoided($notification);
         }
 
+        if ($notification->isPendingRefundReviewNotification()) {
+            return new PendingRefundReview($notification);
+        }
+
         $oneTime = $notification->getOneTimeProductNotification();
         if ($oneTime !== null) {
             return match ($oneTime->getNotificationType()) {
@@ -123,13 +131,16 @@ final class GooglePlayServerNotificationController
                 SubscriptionNotificationType::PAUSE_SCHEDULE_CHANGED => new SubscriptionPauseScheduleChanged($notification),
                 SubscriptionNotificationType::REVOKED => new SubscriptionRevoked($notification),
                 SubscriptionNotificationType::EXPIRED => new SubscriptionExpired($notification),
+                SubscriptionNotificationType::ITEMS_CHANGED => new SubscriptionItemsChanged($notification),
+                SubscriptionNotificationType::CANCELLATION_SCHEDULED => new SubscriptionCancellationScheduled($notification),
                 SubscriptionNotificationType::PRICE_CHANGE_UPDATED => new SubscriptionPriceChangeUpdated($notification),
                 SubscriptionNotificationType::PENDING_PURCHASE_CANCELED => new SubscriptionPendingPurchaseCanceled($notification),
+                SubscriptionNotificationType::PRICE_STEP_UP_CONSENT_UPDATED => new SubscriptionPriceStepUpConsentUpdated($notification),
                 SubscriptionNotificationType::UNKNOWN => $this->unknown($notification, SubscriptionUnknown::class, $subscription->getRawNotificationType()),
             };
         }
 
-        // Unreachable: ServerNotification rejects payloads with none of the four sections.
+        // Unreachable: ServerNotification rejects payloads with none of the five sections.
         return new GooglePlayEvent($notification); // @codeCoverageIgnore
     }
 

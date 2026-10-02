@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/aporat/store-receipt-validator.git",
-                "reference": "8dbe50be8d05f2aaa2e916616b5e53bd4411a6c5"
+                "reference": "3307f639521e59e182a0ec3fb3e2c16f5cdd2b27"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/aporat/store-receipt-validator/zipball/8dbe50be8d05f2aaa2e916616b5e53bd4411a6c5",
-                "reference": "8dbe50be8d05f2aaa2e916616b5e53bd4411a6c5",
+                "url": "https://api.github.com/repos/aporat/store-receipt-validator/zipball/3307f639521e59e182a0ec3fb3e2c16f5cdd2b27",
+                "reference": "3307f639521e59e182a0ec3fb3e2c16f5cdd2b27",
                 "shasum": ""
             },
             "require": {
@@ -29,7 +29,7 @@
                 "lcobucci/jwt": "^5.5",
                 "nesbot/carbon": "^2.72.6|^3.0",
                 "php": "^8.4",
-                "phpseclib/phpseclib": "^3.0",
+                "phpseclib/phpseclib": "^3.0 || ^4.0",
                 "psr/http-client": "^1.0",
                 "psr/http-factory": "^1.0",
                 "psr/http-message": "^2.0",
@@ -91,7 +91,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-09-08T13:30:03+00:00"
+            "time": "2026-10-02T03:21:36+00:00"
         },
         {
             "name": "brick/math",

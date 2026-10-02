@@ -217,9 +217,9 @@ Verification uses the `google/auth` package, which is a hard dependency of this 
 
 Every notification type is dispatched as an event under `Aporat\AppStorePurchases\Events\GooglePlay`, all extending `GooglePlayEvent`:
 
-- Subscriptions: `SubscriptionPurchased`, `SubscriptionRenewed`, `SubscriptionRecovered`, `SubscriptionRestarted`, `SubscriptionCanceled`, `SubscriptionOnHold`, `SubscriptionInGracePeriod`, `SubscriptionPaused`, `SubscriptionPauseScheduleChanged`, `SubscriptionDeferred`, `SubscriptionPriceChangeConfirmed`, `SubscriptionPriceChangeUpdated`, `SubscriptionRevoked`, `SubscriptionExpired`, `SubscriptionPendingPurchaseCanceled`, `SubscriptionUnknown`
+- Subscriptions: `SubscriptionPurchased`, `SubscriptionRenewed`, `SubscriptionRecovered`, `SubscriptionRestarted`, `SubscriptionCanceled`, `SubscriptionOnHold`, `SubscriptionInGracePeriod`, `SubscriptionPaused`, `SubscriptionPauseScheduleChanged`, `SubscriptionDeferred`, `SubscriptionPriceChangeConfirmed`, `SubscriptionPriceChangeUpdated`, `SubscriptionRevoked`, `SubscriptionExpired`, `SubscriptionItemsChanged`, `SubscriptionCancellationScheduled`, `SubscriptionPendingPurchaseCanceled`, `SubscriptionPriceStepUpConsentUpdated`, `SubscriptionUnknown`
 - One-time products: `OneTimeProductPurchased`, `OneTimeProductCanceled`, `OneTimeProductUnknown`
-- Refunds and chargebacks: `PurchaseVoided`
+- Refunds and chargebacks: `PurchaseVoided`, `PendingRefundReview`
 - `Test`
 
 Unlike Apple's notifications, a Play notification only identifies the purchase token. Re-read the purchase before changing entitlement:
