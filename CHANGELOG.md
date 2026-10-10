@@ -10,6 +10,23 @@ is attributed it is to the pull request or commit that made it.
 
 ## [Unreleased]
 
+### Added
+- `Events\UnhandledNotification`, dispatched for a verified App Store Server Notification whose type
+  has no dedicated event: the types Apple documents but this package doesn't map (`RESCIND_CONSENT`,
+  `METADATA_UPDATE`, `MIGRATION`, `PRICE_CHANGE`) and any type Apple adds later. Previously these
+  were logged as having no mapped event and dispatched nothing.
+- `AppleAppStoreServerNotificationController` takes an optional `TokenVerifier` for its first
+  decode (Apple's chain when null), so tests can trust their own signing chain.
+
+### Fixed
+- A correctly signed Apple notification of a type the installed aporat/store-receipt-validator
+  doesn't know was answered `400`, so Apple retried it. With validator 11.0.0, which throws
+  "Unknown notificationType" only after verifying Apple's signature, it is now acknowledged with
+  `204` and logged at warning without dispatching anything. With 11.0.1 and later it parses, is
+  fully verified (bundle ID, environment, app Apple ID) and dispatched as `UnhandledNotification`.
+  Signature and certificate-chain failures are still rejected.
+- Controller logs name the notification type as Apple sent it rather than `UNKNOWN`.
+
 ## [4.0.0] - 2026-10-02
 
 ### Added

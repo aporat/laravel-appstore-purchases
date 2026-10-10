@@ -369,6 +369,7 @@ Every notification type is dispatched as an event under `Aporat\AppStorePurchase
 - `ExternalPurchaseToken`
 - `OneTimeCharge`
 - `Test`
+- `UnhandledNotification`: any other verified notification. Apple adds types over time (`RESCIND_CONSENT`, and `METADATA_UPDATE`, `MIGRATION` and `PRICE_CHANGE` for the Advanced Commerce API, have no dedicated event yet), so these are acknowledged with `204` instead of being bounced back for Apple to retry. `$event->notification->getRawNotificationType()` (aporat/store-receipt-validator 11.0.1+) is the type Apple sent; `getNotificationType()` is `UNKNOWN` for a type the installed validator doesn't know. With validator 11.0.0, which rejects a type it doesn't know after verifying Apple's signature, such a notification is acknowledged with `204` and logged, but not dispatched.
 
 The event carries the verified `ServerNotification`, whose transaction and renewal info are already decoded:
 
