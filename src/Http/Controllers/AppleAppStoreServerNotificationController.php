@@ -24,11 +24,13 @@ use Aporat\AppStorePurchases\Events\SubscriptionRenewalExtended;
 use Aporat\AppStorePurchases\Events\SubscriptionRenewalExtension;
 use Aporat\AppStorePurchases\Events\SubscriptionRenewed;
 use Aporat\AppStorePurchases\Events\Test;
+use Aporat\AppStorePurchases\Events\UnhandledNotification;
 use Aporat\AppStorePurchases\Logging\NotificationLogger;
 use Aporat\AppStorePurchases\Support\NotificationReplayGuard;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use LogicException;
+use ReceiptValidator\AppleAppStore\JWT\TokenVerifier;
 use ReceiptValidator\AppleAppStore\ServerNotification as AppleAppStoreServerNotification;
 use ReceiptValidator\AppleAppStore\ServerNotificationType as AppleAppStoreServerNotificationType;
 use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
@@ -52,6 +54,13 @@ use ReceiptValidator\Exceptions\ValidationException;
  * A notification whose UUID was already handled within the replay-protection
  * window is acknowledged with 204 and not dispatched again.
  *
+ * Apple adds notification types over time. A verified notification whose type
+ * has no dedicated event is dispatched as [UnhandledNotification] and
+ * acknowledged with 204, so Apple doesn't retry it. With
+ * aporat/store-receipt-validator 11.0.0, which throws on a type it doesn't
+ * know after verifying Apple's signature, such a notification is acknowledged
+ * with 204 and logged but not dispatched.
+ *
  * @see https://developer.apple.com/documentation/appstoreservernotifications
  */
 final class AppleAppStoreServerNotificationController
@@ -59,10 +68,14 @@ final class AppleAppStoreServerNotificationController
     /** The replay-guard source under which Apple notification UUIDs are recorded. */
     private const string REPLAY_SOURCE = 'apple';
 
+    /**
+     * @param  TokenVerifier|null  $verifier  Verifier for the first decode; Apple's certificate chain when null.
+     */
     public function __construct(
         private readonly AppStorePurchasesManager $manager,
         private readonly NotificationLogger $logger,
         private readonly NotificationReplayGuard $replayGuard,
+        private readonly ?TokenVerifier $verifier = null,
     ) {}
 
     public function __invoke(Request $request): Response
@@ -74,8 +87,22 @@ final class AppleAppStoreServerNotificationController
         // verifier below repeats that check, which is cheap, so that every
         // ownership rule lives in the library's verifyNotification().
         try {
-            $notification = new AppleAppStoreServerNotification($payload);
+            $notification = new AppleAppStoreServerNotification($payload, $this->verifier);
         } catch (ValidationException $e) {
+            $unknownType = self::unknownNotificationType($e);
+            if ($unknownType !== null) {
+                // aporat/store-receipt-validator 11.0.0 rejects a type it doesn't
+                // know, but only after Apple's signature verified. The payload is
+                // genuine, so answer 2xx or Apple keeps retrying it. Nothing is
+                // dispatched: the app and environment were never checked.
+                $this->logger->warning('Apple App Store server notification type is unknown to the installed receipt validator; acknowledged without dispatching', [
+                    'notification_type' => $unknownType,
+                    'payload_size' => strlen((string) $request->getContent()),
+                ]);
+
+                return new Response(null, Response::HTTP_NO_CONTENT);
+            }
+
             if (self::isSignatureFailure($e)) {
                 $this->logger->warning('Apple App Store server notification rejected: signature verification failed', [
                     'error' => $e->getMessage(),
@@ -97,7 +124,7 @@ final class AppleAppStoreServerNotificationController
             $this->logger->warning('Apple App Store server notification rejected: no validator configured for bundle ID', [
                 'bundle_id' => $bundleId,
                 'environment' => $notification->getEnvironment()->value,
-                'notification_type' => $notification->getNotificationType()->value,
+                'notification_type' => self::rawType($notification),
                 'notification_uuid' => $notification->getNotificationUUID(),
             ]);
 
@@ -118,7 +145,7 @@ final class AppleAppStoreServerNotificationController
                 'validator' => $name,
                 'bundle_id' => $bundleId,
                 'environment' => $notification->getEnvironment()->value,
-                'notification_type' => $notification->getNotificationType()->value,
+                'notification_type' => self::rawType($notification),
                 'notification_uuid' => $notification->getNotificationUUID(),
             ]);
 
@@ -131,7 +158,7 @@ final class AppleAppStoreServerNotificationController
             $this->logger->info('Apple App Store server notification already handled; acknowledging duplicate', [
                 'bundle_id' => $bundleId,
                 'environment' => $notification->getEnvironment()->value,
-                'notification_type' => $notification->getNotificationType()->value,
+                'notification_type' => self::rawType($notification),
                 'notification_uuid' => $uuid,
             ]);
 
@@ -162,27 +189,29 @@ final class AppleAppStoreServerNotificationController
         };
 
         if ($event === null) {
-            $this->logger->warning('Apple App Store server notification type has no mapped event', [
-                'notification_type' => $notification->getNotificationType()->value,
+            $this->logger->info('Apple App Store server notification type has no dedicated event; dispatching UnhandledNotification', [
+                'notification_type' => self::rawType($notification),
                 'notification_uuid' => $notification->getNotificationUUID(),
             ]);
-        } else {
-            try {
-                event($event);
-            } catch (\Throwable $e) {
-                $this->logger->error('Apple App Store server notification listener threw an exception', [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                    'notification_type' => $notification->getNotificationType()->value,
-                    'notification_uuid' => $uuid,
-                ]);
 
-                // Apple retries on 500 with the same UUID; that retry must be
-                // processed, not acknowledged as a duplicate.
-                $this->replayGuard->release(self::REPLAY_SOURCE, $uuid);
+            $event = new UnhandledNotification($notification);
+        }
 
-                return new Response(null, Response::HTTP_INTERNAL_SERVER_ERROR);
-            }
+        try {
+            event($event);
+        } catch (\Throwable $e) {
+            $this->logger->error('Apple App Store server notification listener threw an exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'notification_type' => self::rawType($notification),
+                'notification_uuid' => $uuid,
+            ]);
+
+            // Apple retries on 500 with the same UUID; that retry must be
+            // processed, not acknowledged as a duplicate.
+            $this->replayGuard->release(self::REPLAY_SOURCE, $uuid);
+
+            return new Response(null, Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         return new Response(null, Response::HTTP_NO_CONTENT);
@@ -196,6 +225,32 @@ final class AppleAppStoreServerNotificationController
         ]);
 
         return new Response(null, Response::HTTP_BAD_REQUEST);
+    }
+
+    /**
+     * The notification type as Apple sent it. getRawNotificationType() exists
+     * from aporat/store-receipt-validator 11.0.1; before that every type that
+     * parses is a known one, so the enum value is the same string.
+     */
+    private static function rawType(AppleAppStoreServerNotification $notification): string
+    {
+        $raw = is_callable([$notification, 'getRawNotificationType']) ? $notification->getRawNotificationType() : null;
+
+        return is_string($raw) ? $raw : $notification->getNotificationType()->value;
+    }
+
+    /**
+     * The type named by aporat/store-receipt-validator 11.0.0's "Unknown
+     * notificationType: X" error, which it raises only after Apple's
+     * signature has verified. Null for any other error.
+     */
+    private static function unknownNotificationType(ValidationException $e): ?string
+    {
+        if (preg_match('/\AUnknown notificationType: (.{0,128})/s', $e->getMessage(), $match) !== 1) {
+            return null;
+        }
+
+        return $match[1];
     }
 
     /**
