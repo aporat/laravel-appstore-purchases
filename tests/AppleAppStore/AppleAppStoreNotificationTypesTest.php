@@ -163,7 +163,10 @@ class AppleAppStoreNotificationTypesTest extends TestCase
 
         // An untrusted chain is reported as 400 rather than 401 (the library's
         // message doesn't say "signature"); either way Apple is not answered 2xx.
-        $response->assertClientError();
+        // Checked by range rather than assertClientError(), which Laravel 12's
+        // earliest releases don't have.
+        $status = $response->getStatusCode();
+        self::assertTrue($status >= 400 && $status < 500, "Expected a 4xx response, got {$status}.");
 
         $this->assertNothingFromThePackageDispatched();
     }
