@@ -115,7 +115,7 @@ jobs:
             "$LARAVEL".*) ;;
             *) echo "Expected Laravel $LARAVEL.x, got $installed" >&2; exit 1 ;;
           esac
-          composer show orchestra/testbench phpunit/phpunit aporat/store-receipt-validator | grep -E '^(name|versions)'
+          composer show --direct
 
       - name: Execute tests
         run: composer test
