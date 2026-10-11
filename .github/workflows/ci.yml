@@ -70,6 +70,9 @@ jobs:
         dependencies: [highest]
         include:
           # The oldest versions composer.json allows, on the oldest PHP.
+          # Composer 2.9+ skips releases with published security advisories
+          # while resolving, so this is the oldest version a user can install
+          # by default (Laravel 12.69 as of October 2026), not 12.0 itself.
           - php: '8.4'
             laravel: '12'
             dependencies: lowest
