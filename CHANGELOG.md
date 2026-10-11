@@ -26,6 +26,17 @@ is attributed it is to the pull request or commit that made it.
   fully verified (bundle ID, environment, app Apple ID) and dispatched as `UnhandledNotification`.
   Signature and certificate-chain failures are still rejected.
 - Controller logs name the notification type as Apple sent it rather than `UNKNOWN`.
+- The Composer dist archive no longer ships `tests/` (including its test signing keys), `.github/`,
+  `composer.lock` or the PHPUnit and PHPStan configs; a `.gitattributes` now limits it to `src/`,
+  `config/`, `composer.json`, the README, the CHANGELOG and the LICENSE.
+- The README's license badge links to `main` instead of `master`.
+
+### CI
+- The Laravel matrix now installs the Laravel major it names. Each lane requires
+  `laravel/framework` and the matching `orchestra/testbench` and resolves dependencies fresh;
+  previously every lane installed `composer.lock`, so the "Laravel 12" lanes ran Laravel 13.
+- New lane on PHP 8.4 / Laravel 12 with the lowest dependency versions `composer.json` allows.
+- Pint, PHPStan and the coverage run moved to one "Quality Assurance" job.
 
 ## [4.0.0] - 2026-10-02
 

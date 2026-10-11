@@ -2,29 +2,20 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   release:
     types:
       - published
 
+permissions:
+  contents: read
+
 jobs:
-  php-tests:
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        php: [8.4, 8.5]
-        laravel: [12.*, 13.*]
-        os: [ubuntu-latest]
-        coverage: [none]
-        include:
-          - php: 8.5
-            laravel: 13.*
-            os: ubuntu-latest
-            coverage: xdebug
-
-    name: '[P${{ matrix.php }}] [L${{ matrix.laravel }}] [${{ matrix.coverage }}]'
+  # Lint, static analysis and the coverage run, on the locked dependency set.
+  qa:
+    name: Quality Assurance
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
@@ -33,19 +24,11 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ matrix.php }}
-          extensions: mbstring json openssl xdebug
+          php-version: '8.5'
+          extensions: mbstring, json, openssl
           ini-values: memory_limit=-1
           tools: composer:v2
-          coverage: ${{ matrix.coverage }}
-        env:
-          update: true
-
-      - name: Cache dependencies
-        uses: actions/cache@v6
-        with:
-          path: vendor
-          key: ${{ matrix.os }}-${{ matrix.php }}-${{ matrix.laravel }}-vendor-${{ hashFiles('**/composer.lock') }}
+          coverage: xdebug
 
       - name: Install Dependencies
         uses: ramsey/composer-install@v4
@@ -56,24 +39,83 @@ jobs:
       - name: Execute static analysis
         run: composer analyze
 
-      - name: Execute tests (Unit and Feature tests) via PHPUnit
-        if: matrix.coverage == 'none'
-        run: composer test
-
-      - name: Execute tests (Unit and Feature tests) via PHPUnit
-        if: matrix.coverage == 'xdebug'
+      - name: Execute tests with coverage
         run: composer test-ci
 
       - name: Upload coverage reports to Codecov
-        if: matrix.coverage == 'xdebug'
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ${{ github.repository }}
 
       - name: Upload test results to Codecov
-        if: matrix.coverage == 'xdebug'
+        if: ${{ !cancelled() }}
         uses: codecov/test-results-action@v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: ${{ github.repository }}
+
+  # The test suite against each supported PHP and Laravel major. The Laravel
+  # version is required explicitly and resolved fresh rather than installed
+  # from composer.lock, which pins a single Laravel major.
+  tests:
+    name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}${{ matrix.dependencies == 'lowest' && ' / lowest' || '' }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+        laravel: ['12', '13']
+        dependencies: [highest]
+        include:
+          # The oldest versions composer.json allows, on the oldest PHP.
+          - php: '8.4'
+            laravel: '12'
+            dependencies: lowest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, json, openssl
+          ini-values: memory_limit=-1
+          tools: composer:v2
+          coverage: none
+
+      - name: Require Laravel ${{ matrix.laravel }}
+        env:
+          LARAVEL: ${{ matrix.laravel }}
+        run: |
+          case "$LARAVEL" in
+            12) TESTBENCH='^10.0' ;;
+            13) TESTBENCH='^11.0' ;;
+            *) echo "No Testbench mapping for Laravel $LARAVEL" >&2; exit 1 ;;
+          esac
+          composer require "laravel/framework:^${LARAVEL}.0" --no-update --no-interaction
+          composer require --dev "orchestra/testbench:${TESTBENCH}" --no-update --no-interaction
+
+      - name: Install Dependencies (${{ matrix.dependencies }})
+        uses: ramsey/composer-install@v4
+        with:
+          dependency-versions: ${{ matrix.dependencies }}
+          composer-options: --with-all-dependencies
+
+      - name: Check the installed Laravel version
+        env:
+          LARAVEL: ${{ matrix.laravel }}
+        run: |
+          installed=$(composer show laravel/framework --format=json | php -r 'echo json_decode(stream_get_contents(STDIN), true)["versions"][0];')
+          echo "Installed laravel/framework $installed"
+          case "${installed#v}" in
+            "$LARAVEL".*) ;;
+            *) echo "Expected Laravel $LARAVEL.x, got $installed" >&2; exit 1 ;;
+          esac
+          composer show orchestra/testbench phpunit/phpunit aporat/store-receipt-validator | grep -E '^(name|versions)'
+
+      - name: Execute tests
+        run: composer test
