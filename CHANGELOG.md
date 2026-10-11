@@ -10,7 +10,30 @@ is attributed it is to the pull request or commit that made it.
 
 ## [Unreleased]
 
+### Changed
+- **Requires `aporat/store-receipt-validator` `dev-main`** instead of `^11.0`, to use its unreleased
+  fixes (notification types it doesn't know, the App Store chain and iTunes validator fixes) ahead of
+  a tag. Applications installing this package must allow dev stability: `"minimum-stability": "dev"`
+  with `"prefer-stable": true`, or a root requirement of `"aporat/store-receipt-validator": "dev-main"`.
+  The compatibility path for validator 11.0.0 in the App Store notification controller is removed.
+- Requires `phpseclib/phpseclib` `^3.0.36` and `psr/cache` `^2.0 || ^3.0` (see Fixed).
+
 ### Added
+- Google Play access tokens are cached in a Laravel cache store and shared across requests and
+  workers, one entry per service account (keyed by a hash of the account email and scope), until
+  `token_refresh_margin` seconds (default 300) before Google's expiry. Concurrent misses wait on a
+  cache lock when the store supports one. Failed exchanges are not cached, a failing store falls
+  back to a direct exchange, and tokens are never logged. Previously every PHP process minted its
+  own token on its first Google Play call.
+- Google's OIDC signing certificates for RTDN push verification are cached in the same store for
+  Google's `Cache-Control: max-age`. A token signed by a key ID the cached set lacks triggers one
+  refetch, at most once a minute. Previously the certificates were fetched for every push. The
+  fetch now has connect and request timeouts (5s and 10s).
+- `google_cache` config block: `enabled` (`APPSTORE_GOOGLE_CACHE`, default `true`), `store`
+  (`APPSTORE_GOOGLE_CACHE_STORE`, default store when null) and `token_refresh_margin`
+  (`APPSTORE_GOOGLE_TOKEN_REFRESH_MARGIN`). Disabling it restores the per-process token and the
+  per-push certificate fetch. A published config without the block uses these defaults.
+- `GoogleOidcPushVerifier` takes an optional PSR-6 `certificateCache` and google/auth `httpHandler`.
 - `Events\UnhandledNotification`, dispatched for a verified App Store Server Notification whose type
   has no dedicated event: the types Apple documents but this package doesn't map (`RESCIND_CONSENT`,
   `METADATA_UPDATE`, `MIGRATION`, `PRICE_CHANGE`) and any type Apple adds later. Previously these
@@ -19,12 +42,14 @@ is attributed it is to the pull request or commit that made it.
   decode (Apple's chain when null), so tests can trust their own signing chain.
 
 ### Fixed
+- Google Play RTDN push verification rejected every push with `401` ("Please require
+  phpseclib/phpseclib v3 to use this utility.") when Composer resolved phpseclib 4, which
+  aporat/store-receipt-validator allows: google/auth verifies RS256 tokens with phpseclib 3 only and
+  doesn't require it. This package now requires phpseclib `^3.0.36`.
 - A correctly signed Apple notification of a type the installed aporat/store-receipt-validator
-  doesn't know was answered `400`, so Apple retried it. With validator 11.0.0, which throws
-  "Unknown notificationType" only after verifying Apple's signature, it is now acknowledged with
-  `204` and logged at warning without dispatching anything. With 11.0.1 and later it parses, is
-  fully verified (bundle ID, environment, app Apple ID) and dispatched as `UnhandledNotification`.
-  Signature and certificate-chain failures are still rejected.
+  doesn't know was answered `400`, so Apple retried it. It now parses, is fully verified (bundle ID,
+  environment, app Apple ID) and dispatched as `UnhandledNotification`. Signature and
+  certificate-chain failures are still rejected.
 - Controller logs name the notification type as Apple sent it rather than `UNKNOWN`.
 - The Composer dist archive no longer ships `tests/` (including its test signing keys), `.github/`,
   `composer.lock` or the PHPUnit and PHPStan configs; a `.gitattributes` now limits it to `src/`,

@@ -7,6 +7,7 @@ namespace Aporat\AppStorePurchases;
 use Aporat\AppStorePurchases\Contracts\PubSubPushVerifier;
 use Aporat\AppStorePurchases\GooglePlay\GoogleOidcPushVerifier;
 use Aporat\AppStorePurchases\Logging\NotificationLogger;
+use Aporat\AppStorePurchases\Support\GoogleCache;
 use Aporat\AppStorePurchases\Support\NotificationReplayGuard;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Container\Container;
@@ -26,6 +27,7 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
 
         $this->app->singleton(NotificationLogger::class, fn (Container $app) => new NotificationLogger($app));
         $this->app->singleton(NotificationReplayGuard::class, fn (Container $app) => new NotificationReplayGuard($app));
+        $this->app->singleton(GoogleCache::class, fn (Container $app) => new GoogleCache($app));
 
         $this->app->bind(PubSubPushVerifier::class, function (Container $app) {
             /** @var ConfigRepository $configRepository */
@@ -45,6 +47,7 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
                 serviceAccountEmail: self::stringOrList($config['service_account_email'] ?? null),
                 apps: $manager->googlePlayRtdnExpectationsByPackageName(),
                 logger: $app->make(NotificationLogger::class),
+                certificateCache: $app->make(GoogleCache::class)->certificatePool(),
             );
         });
     }
@@ -88,6 +91,7 @@ class AppStorePurchasesServiceProvider extends ServiceProvider implements Deferr
             PubSubPushVerifier::class,
             NotificationLogger::class,
             NotificationReplayGuard::class,
+            GoogleCache::class,
         ];
     }
 }

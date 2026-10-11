@@ -55,11 +55,9 @@ use ReceiptValidator\Exceptions\ValidationException;
  * window is acknowledged with 204 and not dispatched again.
  *
  * Apple adds notification types over time. A verified notification whose type
- * has no dedicated event is dispatched as [UnhandledNotification] and
- * acknowledged with 204, so Apple doesn't retry it. With
- * aporat/store-receipt-validator 11.0.0, which throws on a type it doesn't
- * know after verifying Apple's signature, such a notification is acknowledged
- * with 204 and logged but not dispatched.
+ * has no dedicated event, including one the installed receipt validator
+ * doesn't know, is dispatched as [UnhandledNotification] and acknowledged with
+ * 204, so Apple doesn't retry it.
  *
  * @see https://developer.apple.com/documentation/appstoreservernotifications
  */
@@ -89,20 +87,6 @@ final class AppleAppStoreServerNotificationController
         try {
             $notification = new AppleAppStoreServerNotification($payload, $this->verifier);
         } catch (ValidationException $e) {
-            $unknownType = self::unknownNotificationType($e);
-            if ($unknownType !== null) {
-                // aporat/store-receipt-validator 11.0.0 rejects a type it doesn't
-                // know, but only after Apple's signature verified. The payload is
-                // genuine, so answer 2xx or Apple keeps retrying it. Nothing is
-                // dispatched: the app and environment were never checked.
-                $this->logger->warning('Apple App Store server notification type is unknown to the installed receipt validator; acknowledged without dispatching', [
-                    'notification_type' => $unknownType,
-                    'payload_size' => strlen((string) $request->getContent()),
-                ]);
-
-                return new Response(null, Response::HTTP_NO_CONTENT);
-            }
-
             if (self::isSignatureFailure($e)) {
                 $this->logger->warning('Apple App Store server notification rejected: signature verification failed', [
                     'error' => $e->getMessage(),
@@ -227,30 +211,10 @@ final class AppleAppStoreServerNotificationController
         return new Response(null, Response::HTTP_BAD_REQUEST);
     }
 
-    /**
-     * The notification type as Apple sent it. getRawNotificationType() exists
-     * from aporat/store-receipt-validator 11.0.1; before that every type that
-     * parses is a known one, so the enum value is the same string.
-     */
+    /** The notification type as Apple sent it, which may be one the enum doesn't know. */
     private static function rawType(AppleAppStoreServerNotification $notification): string
     {
-        $raw = is_callable([$notification, 'getRawNotificationType']) ? $notification->getRawNotificationType() : null;
-
-        return is_string($raw) ? $raw : $notification->getNotificationType()->value;
-    }
-
-    /**
-     * The type named by aporat/store-receipt-validator 11.0.0's "Unknown
-     * notificationType: X" error, which it raises only after Apple's
-     * signature has verified. Null for any other error.
-     */
-    private static function unknownNotificationType(ValidationException $e): ?string
-    {
-        if (preg_match('/\AUnknown notificationType: (.{0,128})/s', $e->getMessage(), $match) !== 1) {
-            return null;
-        }
-
-        return $match[1];
+        return $notification->getRawNotificationType();
     }
 
     /**

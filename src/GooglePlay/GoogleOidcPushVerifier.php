@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace Aporat\AppStorePurchases\GooglePlay;
 
 use Aporat\AppStorePurchases\Contracts\PubSubPushVerifier;
+use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Psr\Cache\CacheItemPoolInterface;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Throwable;
@@ -31,6 +35,13 @@ use Throwable;
  * development and unauthenticated test subscriptions working, but production
  * endpoints should always set an audience.
  *
+ * Google's signing certificates are cached in the PSR-6 pool passed as
+ * $certificateCache for as long as Google's Cache-Control max-age allows, so
+ * a push costs no certificate fetch. Google rotates its keys: a token signed
+ * by a key the cached set doesn't have triggers one refetch, at most once a
+ * minute however many such tokens arrive. Without a pool the certificates are
+ * fetched for every push.
+ *
  * Requires the google/auth package.
  *
  * @see https://cloud.google.com/pubsub/docs/authenticate-push-subscriptions
@@ -42,6 +53,20 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
 
     /** The google/auth class used for verification, resolved at runtime so it can be swapped in tests. */
     private const string ACCESS_TOKEN_CLASS = 'Google\\Auth\\AccessToken';
+
+    /** The google/auth class that turns a Guzzle client into the HTTP handler it expects. */
+    private const string HTTP_HANDLER_FACTORY_CLASS = 'Google\\Auth\\HttpHandler\\HttpHandlerFactory';
+
+    /** Key the certificates are cached under in the pool. */
+    public const string CERTS_CACHE_KEY = 'google-oidc-certs';
+
+    /** Seconds within which an unknown key ID does not trigger another certificate refetch. */
+    public const int REFETCH_INTERVAL_SECONDS = 60;
+
+    /** Timeouts for the certificate fetch, in seconds. */
+    private const int CERTS_CONNECT_TIMEOUT = 5;
+
+    private const int CERTS_TIMEOUT = 10;
 
     /** @var list<string> */
     private readonly array $audiences;
@@ -61,6 +86,9 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
      */
     private $verifier;
 
+    /** @var callable|null */
+    private $httpHandler;
+
     /**
      * @param  string|list<string>|null  $audience  Default accepted audience(s); null or empty disables verification for packages without their own entry.
      * @param  string|list<string>|null  $serviceAccountEmail  Default accepted signing account(s); null or empty skips the email check.
@@ -69,6 +97,9 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
      * @param  (callable(string, array<string, mixed>): (array<string, mixed>|false))|null  $verifier
      *                                                                                                 Override the token verification call (primarily for testing). Defaults to google/auth.
      * @param  LoggerInterface|null  $logger  Where rejections and verifications are logged; the application's default logger when null.
+     * @param  CacheItemPoolInterface|null  $certificateCache  Where Google's signing certificates are cached between requests; fetched per push when null.
+     * @param  (callable(RequestInterface, array<string, mixed>=): ResponseInterface)|null  $httpHandler
+     *                                                                                                    The google/auth HTTP handler the certificates are fetched with (primarily for testing).
      */
     public function __construct(
         string|array|null $audience,
@@ -76,6 +107,8 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
         array $apps = [],
         ?callable $verifier = null,
         private readonly ?LoggerInterface $logger = null,
+        private readonly ?CacheItemPoolInterface $certificateCache = null,
+        ?callable $httpHandler = null,
     ) {
         $this->audiences = self::normalise($audience);
         $this->serviceAccountEmails = self::normalise($serviceAccountEmail);
@@ -94,6 +127,7 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
         $this->apps = $perApp;
 
         $this->verifier = $verifier;
+        $this->httpHandler = $httpHandler;
     }
 
     /**
@@ -159,28 +193,20 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
         // with nothing in the logs but "invalid token".
         $verify = $this->resolveVerifier();
 
-        $payload = false;
+        $payload = $this->verifyAgainst($verify, $token, $audiences, $packageName);
 
-        // google/auth checks one audience per call, so a token is tried
-        // against each accepted audience until one verifies. The signature is
-        // the same each time; only the "aud" comparison differs.
-        foreach ($audiences as $audience) {
-            try {
-                $payload = $verify($token, [
-                    'audience' => $audience,
-                    'issuer' => self::ISSUER,
-                ]);
-            } catch (Throwable $e) {
-                $this->log()->warning('Google Play RTDN rejected: token verification threw.', [
-                    'package_name' => $packageName,
-                    'error' => $e->getMessage(),
-                ]);
+        if ($payload === null) {
+            return false;
+        }
 
+        if ($payload === false && $this->refetchCertificatesFor($token)) {
+            // Signed by a key the cached certificates don't have: Google may
+            // have rotated its keys since they were cached. Try once more
+            // against a fresh set.
+            $payload = $this->verifyAgainst($verify, $token, $audiences, $packageName);
+
+            if ($payload === null) {
                 return false;
-            }
-
-            if (is_array($payload)) {
-                break;
             }
         }
 
@@ -217,6 +243,98 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
         ]);
 
         return true;
+    }
+
+    /**
+     * Verify the token against each accepted audience in turn: google/auth
+     * checks one audience per call. The signature is the same each time; only
+     * the "aud" comparison differs.
+     *
+     * @param  callable(string, array<string, mixed>): (array<string, mixed>|false)  $verify
+     * @param  list<string>  $audiences
+     * @return array<string, mixed>|false|null The claims; false when no audience verified; null when verification threw (already logged).
+     */
+    private function verifyAgainst(callable $verify, string $token, array $audiences, ?string $packageName): array|false|null
+    {
+        foreach ($audiences as $audience) {
+            try {
+                $payload = $verify($token, [
+                    'audience' => $audience,
+                    'issuer' => self::ISSUER,
+                ]);
+            } catch (Throwable $e) {
+                $this->log()->warning('Google Play RTDN rejected: token verification threw.', [
+                    'package_name' => $packageName,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return null;
+            }
+
+            if (is_array($payload)) {
+                return $payload;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Drop the cached certificates when the token names a key ID they don't
+     * contain, so the next verification fetches Google's current set. Rate
+     * limited: the token is unauthenticated, and a stream of made-up key IDs
+     * must not turn into a certificate fetch per request.
+     */
+    private function refetchCertificatesFor(string $token): bool
+    {
+        if ($this->certificateCache === null || $this->verifier !== null) {
+            return false;
+        }
+
+        $kid = self::unverifiedKeyId($token);
+
+        if ($kid === null) {
+            return false;
+        }
+
+        try {
+            $item = $this->certificateCache->getItem(self::CERTS_CACHE_KEY);
+            $certs = $item->isHit() ? $item->get() : null;
+
+            if (! is_array($certs) || ! is_array($certs['keys'] ?? null)) {
+                // Nothing cached: the failed attempt already used a fresh set.
+                return false;
+            }
+
+            foreach ($certs['keys'] as $key) {
+                if (is_array($key) && ($key['kid'] ?? null) === $kid) {
+                    // The key is known: the token failed for another reason.
+                    return false;
+                }
+            }
+
+            $marker = $this->certificateCache->getItem(self::CERTS_CACHE_KEY.'-refetched');
+            if ($marker->isHit()) {
+                return false;
+            }
+
+            $this->certificateCache->save($marker->set(true)->expiresAfter(self::REFETCH_INTERVAL_SECONDS));
+
+            return $this->certificateCache->deleteItem(self::CERTS_CACHE_KEY);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    /** The "kid" header of a JWT, read without checking anything. */
+    private static function unverifiedKeyId(string $token): ?string
+    {
+        $header = explode('.', $token)[0];
+        $decoded = base64_decode(strtr($header, '-_', '+/'), true);
+        $header = $decoded === false ? null : json_decode($decoded, true);
+        $kid = is_array($header) ? ($header['kid'] ?? null) : null;
+
+        return is_string($kid) && $kid !== '' ? $kid : null;
     }
 
     /**
@@ -344,6 +462,20 @@ final class GoogleOidcPushVerifier implements PubSubPushVerifier
             );
         }
 
-        return static fn (string $token, array $options) => (new $class)->verify($token, $options);
+        $cache = $this->certificateCache;
+        $httpHandler = $this->httpHandler;
+
+        if ($httpHandler === null) {
+            // google/auth's default client has no timeouts: a stalled fetch
+            // of Google's certificates would hold the request open.
+            $factory = self::HTTP_HANDLER_FACTORY_CLASS;
+            $httpHandler = $factory::build(new Client([
+                'connect_timeout' => self::CERTS_CONNECT_TIMEOUT,
+                'timeout' => self::CERTS_TIMEOUT,
+            ]));
+        }
+
+        return static fn (string $token, array $options) => (new $class($httpHandler, $cache))
+            ->verify($token, $options + ['cacheKey' => self::CERTS_CACHE_KEY]);
     }
 }

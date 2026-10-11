@@ -29,9 +29,11 @@
     "php": "^8.4",
     "ext-json": "*",
     "ext-openssl": "*",
+    "aporat/store-receipt-validator": "dev-main",
+    "google/auth": "^1.47",
     "laravel/framework": "^12.0 || ^13.0",
-    "aporat/store-receipt-validator": "^11.0",
-    "google/auth": "^1.47"
+    "phpseclib/phpseclib": "^3.0.36",
+    "psr/cache": "^2.0 || ^3.0"
   },
   "require-dev": {
     "larastan/larastan": "^3.0",

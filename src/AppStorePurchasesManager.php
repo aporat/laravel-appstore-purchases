@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aporat\AppStorePurchases;
 
+use Aporat\AppStorePurchases\GooglePlay\CachedServiceAccountToken;
+use Aporat\AppStorePurchases\Support\GoogleCache;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Log\LogManager;
@@ -13,6 +15,8 @@ use ReceiptValidator\AbstractValidator;
 use ReceiptValidator\Amazon\Validator as AmazonValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
 use ReceiptValidator\Environment;
+use ReceiptValidator\GooglePlay\JWT\CallbackAccessTokenProvider;
+use ReceiptValidator\GooglePlay\JWT\ServiceAccountCredentials;
 use ReceiptValidator\GooglePlay\Validator as GooglePlayValidator;
 use ReceiptValidator\iTunes\Validator as iTunesValidator;
 use RuntimeException;
@@ -428,11 +432,41 @@ class AppStorePurchasesManager
             $json = $this->readKeyFile($path, 'Service account key');
         }
 
-        return new GooglePlayValidator(
+        $credentials = ServiceAccountCredentials::fromJson($json);
+
+        $validator = new GooglePlayValidator(
             packageName: $config['package_name'],
-            credentials: $json,
+            credentials: $credentials,
             environment: $this->environmentOf($config)
         );
+
+        /** @var GoogleCache $cache */
+        $cache = $this->app->make(GoogleCache::class);
+
+        if ($cache->enabled()) {
+            // Share the access token across requests and workers through the
+            // cache instead of minting one per process. The store is read on
+            // every call, so nothing token-related lives on this validator.
+            $token = new CachedServiceAccountToken(
+                cache: $cache->store(),
+                credentials: $credentials,
+                prefix: GoogleCache::KEY_PREFIX,
+                refreshMargin: $cache->refreshMargin(),
+                logger: $this->resolveLogger($config) ?? $this->defaultLogger(),
+            );
+
+            $validator->setAccessTokenProvider(new CallbackAccessTokenProvider($token->get(...)));
+        }
+
+        return $validator;
+    }
+
+    private function defaultLogger(): LoggerInterface
+    {
+        /** @var LoggerInterface $logger */
+        $logger = $this->app->make('log');
+
+        return $logger;
     }
 
     /**
