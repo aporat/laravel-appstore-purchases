@@ -13,7 +13,6 @@ use Aporat\AppStorePurchases\Http\Controllers\AppleAppStoreServerNotificationCon
 use Aporat\AppStorePurchases\Logging\NotificationLogger;
 use Aporat\AppStorePurchases\Support\NotificationReplayGuard;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Lcobucci\JWT\Encoding\ChainedFormatter;
 use Lcobucci\JWT\Encoding\JoseEncoder;
@@ -24,7 +23,6 @@ use Orchestra\Testbench\TestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test as TestAttr;
 use ReceiptValidator\AppleAppStore\JWT\TokenVerifier;
-use ReceiptValidator\AppleAppStore\ServerNotification;
 use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
 use ReceiptValidator\Environment;
 
@@ -103,24 +101,14 @@ class AppleAppStoreNotificationTypesTest extends TestCase
     {
         $this->trustTestChain();
         Event::fake();
-        Log::spy();
 
         $this->postJson('/apple/notifications', ['signedPayload' => self::sign($claims)])->assertNoContent();
 
         $this->assertNoDedicatedEventDispatched();
 
-        if (self::validatorKnowsUnknownTypes()) {
-            // aporat/store-receipt-validator 11.0.1+: parsed, verified, and dispatched generically.
-            Event::assertDispatched(UnhandledNotification::class, fn (UnhandledNotification $event): bool => $event->notification->getRawNotificationType() === $claims['notificationType']
-                && $event->notification->getBundleId() === self::BUNDLE_ID);
-        } else {
-            // 11.0.0 throws on the type after verifying the signature: acknowledged, logged, not dispatched.
-            Event::assertNotDispatched(UnhandledNotification::class);
-            Log::shouldHaveReceived('warning')
-                ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'unknown to the installed receipt validator')
-                    && ($context['notification_type'] ?? null) === $claims['notificationType'])
-                ->once();
-        }
+        // Parsed, verified against the configured app, and dispatched generically.
+        Event::assertDispatched(UnhandledNotification::class, fn (UnhandledNotification $event): bool => $event->notification->getRawNotificationType() === $claims['notificationType']
+            && $event->notification->getBundleId() === self::BUNDLE_ID);
     }
 
     /**
@@ -196,9 +184,9 @@ class AppleAppStoreNotificationTypesTest extends TestCase
 
         $response = $this->postJson('/apple/notifications', ['signedPayload' => self::sign($claims)]);
 
-        // 11.0.1+ checks the bundle ID and rejects it; 11.0.0 can't read the
-        // notification at all, so it is acknowledged. Either way, nothing runs.
-        $response->assertStatus(self::validatorKnowsUnknownTypes() ? 401 : 204);
+        // Verified like any other notification: the bundle ID matches no
+        // configured app, so it is rejected and nothing runs.
+        $response->assertUnauthorized();
         $this->assertNothingFromThePackageDispatched();
     }
 
@@ -218,11 +206,6 @@ class AppleAppStoreNotificationTypesTest extends TestCase
 
             Event::assertNotDispatched($class);
         }
-    }
-
-    private static function validatorKnowsUnknownTypes(): bool
-    {
-        return method_exists(ServerNotification::class, 'getRawNotificationType');
     }
 
     /**

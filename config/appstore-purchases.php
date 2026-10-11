@@ -43,6 +43,28 @@ return [
         'ttl' => (int) env('APPSTORE_REPLAY_TTL', 604800),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Google Token and Certificate Cache
+    |--------------------------------------------------------------------------
+    |
+    | Google Play validators share their Android Publisher access token through
+    | this cache store (one entry per service account), refreshing it
+    | 'token_refresh_margin' seconds before Google's expiry, instead of
+    | minting one per PHP process. The RTDN push verifier caches Google's
+    | signing certificates here for as long as Google's Cache-Control max-age
+    | allows. Use a shared store (redis, database) so every server and worker
+    | reuses them; null uses the application's default store. Disable to fall
+    | back to a token per process and a certificate fetch per push.
+    |
+    */
+
+    'google_cache' => [
+        'enabled' => (bool) env('APPSTORE_GOOGLE_CACHE', true),
+        'store' => env('APPSTORE_GOOGLE_CACHE_STORE'),
+        'token_refresh_margin' => (int) env('APPSTORE_GOOGLE_TOKEN_REFRESH_MARGIN', 300),
+    ],
+
     'validators' => [
         'apple' => [
             'validator' => 'apple-app-store',

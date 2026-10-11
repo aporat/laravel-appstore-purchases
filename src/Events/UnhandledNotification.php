@@ -11,8 +11,7 @@ namespace Aporat\AppStorePurchases\Events;
  * added after the installed aporat/store-receipt-validator was released, in
  * which case `$notification->getNotificationType()` is UNKNOWN.
  *
- * Read the type Apple sent from `$notification->getRawNotificationType()`
- * (aporat/store-receipt-validator 11.0.1 or later).
+ * Read the type Apple sent from `$notification->getRawNotificationType()`.
  *
  * The notification passed the same verification as every other event (Apple's
  * signature, bundle ID, environment, app Apple ID), and Apple has been

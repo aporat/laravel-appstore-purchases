@@ -29,6 +29,8 @@ Validation itself is done by [aporat/store-receipt-validator](https://github.com
 composer require aporat/laravel-appstore-purchases
 ```
 
+> ⚠️ This package currently requires `aporat/store-receipt-validator` at `dev-main`, not a tagged release, so it can use fixes that are not released yet. Your application must accept dev-stability packages: set `"minimum-stability": "dev"` with `"prefer-stable": true` in its `composer.json`, or require `"aporat/store-receipt-validator": "dev-main"` there yourself. Composer only reads stability flags from the root package, so this package can't grant it for you.
+
 ---
 
 ## ⚙️ Configuration
@@ -259,6 +261,20 @@ if ($product->isPurchased() && ! $product->isAcknowledged()) {
 | Orders | `getOrder()`, `getOrders()`, `refundOrder()`, `reviewRefund()` |
 | Refunds | `getVoidedPurchases()` |
 
+#### Access token caching
+
+Every Google Play API call needs an OAuth access token minted from the service account. The package caches it in a Laravel cache store, one entry per service account, and reuses it until five minutes before Google's expiry, so PHP-FPM workers and queue workers share one token instead of each minting their own (Google's tokens last an hour). When the store supports locks, concurrent requests that find no token wait for the first one to mint it. Failed exchanges are never cached, a store that is down falls back to minting directly, and the token is never logged.
+
+The same store caches Google's OIDC signing certificates for push authentication (below). Use a store every server shares:
+
+```env
+APPSTORE_GOOGLE_CACHE=true
+APPSTORE_GOOGLE_CACHE_STORE=redis
+APPSTORE_GOOGLE_TOKEN_REFRESH_MARGIN=300
+```
+
+The access token is stored in the cache in plain text, like any other cache value: it grants Android Publisher API access for under an hour. With `APPSTORE_GOOGLE_CACHE=false` each validator instance mints and keeps its own token, as before.
+
 > ℹ️ Google has no sandbox endpoint, so the `environment` of a Google Play entry is informational. Licence-tester purchases come back from the production API flagged as `isTestPurchase()`.
 
 ### 🛒 Amazon Appstore
@@ -369,7 +385,7 @@ Every notification type is dispatched as an event under `Aporat\AppStorePurchase
 - `ExternalPurchaseToken`
 - `OneTimeCharge`
 - `Test`
-- `UnhandledNotification`: any other verified notification. Apple adds types over time (`RESCIND_CONSENT`, and `METADATA_UPDATE`, `MIGRATION` and `PRICE_CHANGE` for the Advanced Commerce API, have no dedicated event yet), so these are acknowledged with `204` instead of being bounced back for Apple to retry. `$event->notification->getRawNotificationType()` (aporat/store-receipt-validator 11.0.1+) is the type Apple sent; `getNotificationType()` is `UNKNOWN` for a type the installed validator doesn't know. With validator 11.0.0, which rejects a type it doesn't know after verifying Apple's signature, such a notification is acknowledged with `204` and logged, but not dispatched.
+- `UnhandledNotification`: any other verified notification. Apple adds types over time (`RESCIND_CONSENT`, and `METADATA_UPDATE`, `MIGRATION` and `PRICE_CHANGE` for the Advanced Commerce API, have no dedicated event yet), so these are acknowledged with `204` instead of being bounced back for Apple to retry. `$event->notification->getRawNotificationType()` is the type Apple sent; `getNotificationType()` is `UNKNOWN` for a type the installed validator doesn't know.
 
 The event carries the verified `ServerNotification`, whose transaction and renewal info are already decoded:
 
@@ -438,7 +454,7 @@ Serving several Play apps from one API, each with its own Cloud project and push
 ],
 ```
 
-Verification uses the `google/auth` package, which is a hard dependency of this package. When no audience is configured, verification is skipped and a warning is logged for every push accepted that way, which keeps local development and the Play Console's "Send test notification" button working. **Always set an audience in production**, or the endpoint accepts anything. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
+Verification uses the `google/auth` package, which is a hard dependency of this package. Google's signing certificates are cached in the `google_cache` store (see [Access token caching](#access-token-caching)) for as long as Google's `Cache-Control: max-age` allows, so a push costs no certificate fetch. When Google rotates its keys, a token signed by a key the cached set doesn't have triggers one refetch, at most once a minute. With `APPSTORE_GOOGLE_CACHE=false` the certificates are fetched for every push. When no audience is configured, verification is skipped and a warning is logged for every push accepted that way, which keeps local development and the Play Console's "Send test notification" button working. **Always set an audience in production**, or the endpoint accepts anything. To replace the check entirely, bind your own `Aporat\AppStorePurchases\Contracts\PubSubPushVerifier`.
 
 #### Events
 
