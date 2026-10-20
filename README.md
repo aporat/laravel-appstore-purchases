@@ -51,9 +51,9 @@ return [
         'apple' => [
             'validator' => 'apple-app-store',
             // The In-App Purchase key: the .p8 file's path, or its PEM contents
-            // as 'private_key' (e.g. from a secrets manager; takes precedence,
-            // and flattened line breaks are restored).
-            'key_path' => app_path('../resources/keys/authkey_ABC123XYZ.p8'),
+            // inline (e.g. from a secrets manager; flattened line breaks are
+            // restored). A value with a PEM header is the key itself.
+            'private_key' => base_path('resources/keys/authkey_ABC123XYZ.p8'),
             'key_id' => 'ABC123XYZ',
             'issuer_id' => 'DEF456UVW',
             'bundle_id' => 'com.example',
