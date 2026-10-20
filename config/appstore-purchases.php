@@ -68,13 +68,11 @@ return [
     'validators' => [
         'apple' => [
             'validator' => 'apple-app-store',
-            // The In-App Purchase key: either the .p8 file's path or its PEM
-            // contents inline. 'private_key' wins when both are set, so a
-            // secrets-manager value can replace the file without touching
-            // 'key_path'. Line breaks that an env channel flattened to spaces
-            // or "\n" are restored before use.
-            'key_path' => env('APPLE_APPSTORE_KEY_PATH', base_path('resources/keys/authkey.p8')),
-            'private_key' => env('APPLE_APPSTORE_PRIVATE_KEY'),
+            // The In-App Purchase key: the .p8 file's path, or its PEM contents
+            // inline (e.g. from a secrets manager). A value with a PEM header is
+            // the key itself, anything else is read as a path. Line breaks that
+            // an env channel flattened to spaces or "\n" are restored before use.
+            'private_key' => env('APPLE_APPSTORE_PRIVATE_KEY', base_path('resources/keys/authkey.p8')),
             'key_id' => env('APPLE_APPSTORE_KEY_ID', ''),
             'issuer_id' => env('APPLE_APPSTORE_ISSUER_ID', ''),
             'bundle_id' => env('APPLE_APPSTORE_BUNDLE_ID', ''),

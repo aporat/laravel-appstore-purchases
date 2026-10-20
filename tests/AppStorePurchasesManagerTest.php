@@ -22,7 +22,7 @@ class AppStorePurchasesManagerTest extends TestCase
     {
         $app['config']->set('appstore-purchases.validators.apple-app-store', [
             'validator' => 'apple-app-store',
-            'key_path' => __DIR__.'/AppleAppStore/certs/testSigningKey.p8',
+            'private_key' => __DIR__.'/AppleAppStore/certs/testSigningKey.p8',
             'key_id' => 'TESTKEY123',
             'issuer_id' => 'ISSUER123',
             'bundle_id' => 'com.example.app',
@@ -165,7 +165,6 @@ class AppStorePurchasesManagerTest extends TestCase
     public function it_builds_the_apple_validator_from_an_inline_private_key()
     {
         $pem = (string) file_get_contents(__DIR__.'/AppleAppStore/certs/testSigningKey.p8');
-        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', null);
         $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', $pem);
 
         $manager = new AppStorePurchasesManager($this->app);
@@ -174,11 +173,18 @@ class AppStorePurchasesManagerTest extends TestCase
     }
 
     #[Test]
-    public function an_inline_private_key_wins_over_a_missing_key_file()
+    public function it_builds_the_apple_validator_from_a_private_key_path()
     {
-        $pem = (string) file_get_contents(__DIR__.'/AppleAppStore/certs/testSigningKey.p8');
-        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', '/invalid/path/to/key.p8');
-        $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', $pem);
+        // The environment set-up gives the file's path as private_key.
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->assertInstanceOf(AppleValidator::class, $manager->get('apple-app-store'));
+    }
+
+    #[Test]
+    public function a_private_key_path_with_surrounding_whitespace_is_still_a_path()
+    {
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', ' '.__DIR__.'/AppleAppStore/certs/testSigningKey.p8'."\n");
 
         $manager = new AppStorePurchasesManager($this->app);
 
@@ -186,15 +192,28 @@ class AppStorePurchasesManagerTest extends TestCase
     }
 
     #[Test]
-    public function it_requires_a_key_path_or_an_inline_private_key()
+    public function it_requires_a_private_key()
     {
-        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', null);
         $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', '  ');
 
         $manager = new AppStorePurchasesManager($this->app);
 
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage("requires 'key_path' or 'private_key'");
+        $this->expectExceptionMessage("requires 'private_key'");
+
+        $manager->get('apple-app-store');
+    }
+
+    #[Test]
+    public function a_config_still_on_key_path_is_told_where_the_key_went()
+    {
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', null);
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', __DIR__.'/AppleAppStore/certs/testSigningKey.p8');
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("'key_path' was removed; put the .p8 file's path in 'private_key'");
 
         $manager->get('apple-app-store');
     }
@@ -238,7 +257,7 @@ class AppStorePurchasesManagerTest extends TestCase
     #[Test]
     public function it_throws_exception_when_signing_key_file_is_missing()
     {
-        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', '/invalid/path/to/key.p8');
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', '/invalid/path/to/key.p8');
 
         $manager = new AppStorePurchasesManager($this->app);
 
@@ -377,7 +396,7 @@ class AppStorePurchasesManagerTest extends TestCase
     {
         $this->app['config']->set('appstore-purchases.validators.spelled', [
             'validator' => $spelling,
-            'key_path' => __DIR__.'/AppleAppStore/certs/testSigningKey.p8',
+            'private_key' => __DIR__.'/AppleAppStore/certs/testSigningKey.p8',
             'key_id' => 'TESTKEY123',
             'issuer_id' => 'ISSUER123',
             'bundle_id' => 'com.example.app',
@@ -420,7 +439,7 @@ class AppStorePurchasesManagerTest extends TestCase
     public function it_throws_when_a_key_file_is_empty()
     {
         $path = tempnam(sys_get_temp_dir(), 'key');
-        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', $path);
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', $path);
 
         $manager = new AppStorePurchasesManager($this->app);
 
@@ -595,7 +614,7 @@ class AppStorePurchasesManagerTest extends TestCase
     {
         $this->app['config']->set('appstore-purchases.validators.second-app', [
             'validator' => 'apple',
-            'key_path' => __DIR__.'/AppleAppStore/certs/testSigningKey.p8',
+            'private_key' => __DIR__.'/AppleAppStore/certs/testSigningKey.p8',
             'key_id' => 'TESTKEY123',
             'issuer_id' => 'ISSUER123',
             'bundle_id' => 'com.example.second',

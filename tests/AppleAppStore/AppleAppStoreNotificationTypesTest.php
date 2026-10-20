@@ -46,7 +46,7 @@ class AppleAppStoreNotificationTypesTest extends TestCase
         $app['config']->set('appstore-purchases.validators', [
             'apple' => [
                 'validator' => 'apple-app-store',
-                'key_path' => __DIR__.'/certs/testSigningKey.p8',
+                'private_key' => __DIR__.'/certs/testSigningKey.p8',
                 'key_id' => 'TESTKEY123',
                 'issuer_id' => 'ISSUER123',
                 'bundle_id' => self::BUNDLE_ID,

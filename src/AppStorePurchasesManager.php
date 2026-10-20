@@ -329,9 +329,9 @@ class AppStorePurchasesManager
     /**
      * Build an App Store Server API validator from an In-App Purchase key.
      *
-     * Accepts either 'private_key' (the key's PEM contents, e.g. from an
-     * environment variable or a secrets manager) or 'key_path' (path to the
-     * .p8 file), plus 'key_id', 'issuer_id' and 'bundle_id'.
+     * 'private_key' is the key: the .p8 file's PEM contents (e.g. from an
+     * environment variable or a secrets manager), or the path of the file
+     * holding them. Plus 'key_id', 'issuer_id' and 'bundle_id'.
      *
      * @param  array<string, mixed>  $config
      */
@@ -346,19 +346,14 @@ class AppStorePurchasesManager
         $signingKey = $config['private_key'] ?? null;
 
         if (! is_string($signingKey) || trim($signingKey) === '') {
-            $path = $config['key_path'] ?? null;
-
-            if (! is_string($path) || $path === '') {
-                throw new InvalidArgumentException(
-                    "Apple App Store validator config requires 'key_path' or 'private_key'."
-                );
-            }
-
-            $signingKey = $this->readKeyFile($path, 'Signing key');
+            // A config still on the removed 'key_path' key gets told where it went.
+            throw new InvalidArgumentException(isset($config['key_path'])
+                ? "Apple App Store validator config: 'key_path' was removed; put the .p8 file's path in 'private_key'."
+                : "Apple App Store validator config requires 'private_key' (the .p8 file's path or its PEM contents).");
         }
 
         return new AppleAppStoreValidator(
-            signingKey: $this->normalizePem($signingKey),
+            signingKey: $this->loadPem($signingKey, 'Signing key'),
             keyId: $config['key_id'],
             issuerId: $config['issuer_id'],
             bundleId: $config['bundle_id'],
@@ -502,6 +497,22 @@ class AppStorePurchasesManager
             developerSecret: $config['developer_secret'],
             environment: $this->environmentOf($config)
         );
+    }
+
+    /**
+     * The PEM text of a key given either as that text or as the path of the
+     * file holding it. A value carrying a PEM header is the key itself;
+     * anything else is read as a path.
+     */
+    private function loadPem(string $keyOrPath, string $label): string
+    {
+        $value = trim($keyOrPath);
+
+        if (! str_contains($value, '-----BEGIN')) {
+            $value = $this->readKeyFile($value, $label);
+        }
+
+        return $this->normalizePem($value);
     }
 
     /**
