@@ -19,6 +19,12 @@ is attributed it is to the pull request or commit that made it.
 - Requires `phpseclib/phpseclib` `^3.0.36` and `psr/cache` `^2.0 || ^3.0` (see Fixed).
 
 ### Added
+- The `apple-app-store` validator accepts the In-App Purchase key inline as `private_key` (the
+  .p8 file's PEM contents, e.g. `APPLE_APPSTORE_PRIVATE_KEY` from a secrets manager) as an
+  alternative to `key_path`; `private_key` takes precedence when both are set. Line breaks that an
+  environment variable or secrets-manager field collapsed to spaces or literal `\n` are restored
+  before the key reaches OpenSSL. A validator with neither key now fails with "requires 'key_path'
+  or 'private_key'" instead of "missing required 'key_path'".
 - Google Play access tokens are cached in a Laravel cache store and shared across requests and
   workers, one entry per service account (keyed by a hash of the account email and scope), until
   `token_refresh_margin` seconds (default 300) before Google's expiry. Concurrent misses wait on a
