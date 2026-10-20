@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1fa247c7a71ef453c748a6caa66d72e0",
+    "content-hash": "f9833e3682e196cf387425b9ed90e069",
     "packages": [
         {
             "name": "aporat/store-receipt-validator",
-            "version": "dev-main",
+            "version": "11.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/aporat/store-receipt-validator.git",
-                "reference": "d6fb98019fa816816038758b738aacd56cf31af3"
+                "reference": "1d19bb22ca01da1d0416b2b2f373baf325f89d48"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/aporat/store-receipt-validator/zipball/d6fb98019fa816816038758b738aacd56cf31af3",
-                "reference": "d6fb98019fa816816038758b738aacd56cf31af3",
+                "url": "https://api.github.com/repos/aporat/store-receipt-validator/zipball/1d19bb22ca01da1d0416b2b2f373baf325f89d48",
+                "reference": "1d19bb22ca01da1d0416b2b2f373baf325f89d48",
                 "shasum": ""
             },
             "require": {
@@ -45,7 +45,6 @@
             "suggest": {
                 "codecov/codecov-php": "Helps send coverage reports to Codecov.io"
             },
-            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
@@ -83,7 +82,7 @@
             ],
             "support": {
                 "issues": "https://github.com/aporat/store-receipt-validator/issues",
-                "source": "https://github.com/aporat/store-receipt-validator/tree/main"
+                "source": "https://github.com/aporat/store-receipt-validator/tree/11.1.0"
             },
             "funding": [
                 {
@@ -91,7 +90,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-10-20T12:35:48+00:00"
+            "time": "2026-10-20T15:44:01+00:00"
         },
         {
             "name": "brick/math",
@@ -9666,9 +9665,7 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "aporat/store-receipt-validator": 20
-    },
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

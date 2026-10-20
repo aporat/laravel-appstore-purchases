@@ -29,7 +29,6 @@ Validation itself is done by [aporat/store-receipt-validator](https://github.com
 composer require aporat/laravel-appstore-purchases
 ```
 
-> ⚠️ This package currently requires `aporat/store-receipt-validator` at `dev-main`, not a tagged release, so it can use fixes that are not released yet. Your application must accept dev-stability packages: set `"minimum-stability": "dev"` with `"prefer-stable": true` in its `composer.json`, or require `"aporat/store-receipt-validator": "dev-main"` there yourself. Composer only reads stability flags from the root package, so this package can't grant it for you.
 
 ---
 

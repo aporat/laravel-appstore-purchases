@@ -10,6 +10,8 @@ is attributed it is to the pull request or commit that made it.
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-10-20
+
 ### Added
 - The subscription layer under `Subscriptions\`: `ManagesStoreSubscriptions` for an account model
   (one `subscriptions` row per store, a client credential only extends, webhooks and the worker are
@@ -22,11 +24,11 @@ is attributed it is to the pull request or commit that made it.
   `validatorConfig()`, `subscriptionProducts()` and `googlePlayValidatorForPackage()`.
 
 ### Changed
-- **Requires `aporat/store-receipt-validator` `dev-main`** instead of `^11.0`, to use its unreleased
-  fixes (notification types it doesn't know, the App Store chain and iTunes validator fixes) ahead of
-  a tag. Applications installing this package must allow dev stability: `"minimum-stability": "dev"`
-  with `"prefer-stable": true`, or a root requirement of `"aporat/store-receipt-validator": "dev-main"`.
-  The compatibility path for validator 11.0.0 in the App Store notification controller is removed.
+- Requires `aporat/store-receipt-validator` `^11.1` instead of `^11.0`, for the notification types it
+  did not know, the App Store chain and iTunes validator fixes, and `AppReceiptVerifier`. The
+  compatibility path for validator 11.0.0 in the App Store notification controller is removed.
+- `ManagesStoreSubscriptions` no longer writes an info line when it sets a transaction's
+  `appAccountToken`; a failure to set it is still logged at error.
 - Requires `phpseclib/phpseclib` `^3.0.36` and `psr/cache` `^2.0 || ^3.0` (see Fixed).
 
 ### Removed

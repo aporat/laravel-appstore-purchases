@@ -365,16 +365,6 @@ trait ManagesStoreSubscriptions
             if ($validator instanceof AppleAppStoreValidator) {
                 $validator->setAppAccountToken($originalTransactionId, (string) $this->store_account_token);
             }
-
-            SubscriptionLog::info($token === ''
-                ? 'App Store: appAccountToken set on a transaction made outside the app.'
-                : 'App Store: appAccountToken moved to the restoring account; no account held the previous one.', [
-                    'app_name' => $this->appStoreAppName(),
-                    'account_id' => $this->getKey(),
-                    'store_subscription_id' => $originalTransactionId,
-                    'environment' => $transaction->getEnvironment()->value,
-                    'previous_app_account_token' => $transaction->getAppAccountToken(),
-                ]);
         } catch (Throwable $e) {
             SubscriptionLog::error('Failed to set the appAccountToken', [
                 'app_name' => $this->appStoreAppName(),
