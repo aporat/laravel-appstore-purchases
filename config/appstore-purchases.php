@@ -82,6 +82,11 @@ return [
             // payloads, so it is not checked there.
             'app_apple_id' => env('APPLE_APPSTORE_APP_APPLE_ID'),
             'environment' => env('APPLE_APPSTORE_ENVIRONMENT', 'SANDBOX'),
+            // The auto-renewable subscription products this app sells, for the
+            // subscription layer (see 'subscriptions' below). A transaction for
+            // any other product is ignored there. Google Play entries take the
+            // same key.
+            // 'subscription_products' => ['com.myapp.plan.monthly', 'com.myapp.plan.yearly'],
         ],
         'itunes' => [
             'validator' => 'itunes',
@@ -139,6 +144,67 @@ return [
         'rtdn' => [
             'audience' => env('GOOGLE_PLAY_RTDN_AUDIENCE'),
             'service_account_email' => env('GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT_EMAIL'),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Subscriptions on accounts
+    |--------------------------------------------------------------------------
+    |
+    | The entitlement layer: an Eloquent account model that uses
+    | Subscriptions\ManagesStoreSubscriptions, a `subscriptions` table of
+    | Subscriptions\StoreSubscription rows next to it, the SubscriptionRecorder
+    | behind a `POST .../subscription` endpoint, the listeners that apply the
+    | store notifications above to those accounts, and the re-verify command.
+    | See the "Subscriptions on accounts" section of the README.
+    |
+    | 'subscribers' names the Account + Subscription model pairs the listeners
+    | search, each with the Google Play validator entry whose package its
+    | Android app has. Leave it empty and the listeners are not registered.
+    |
+    */
+
+    'subscribers' => [
+        // ['account' => App\Models\Account::class, 'subscription' => App\Models\Subscription::class, 'play_validator' => 'google-play'],
+    ],
+
+    'subscriptions' => [
+        // Where the layer logs: routine facts at info, refused client input at
+        // warning, failed store calls at error. Null for the default channel.
+        'log_channel' => env('APPSTORE_SUBSCRIPTIONS_LOG_CHANNEL'),
+
+        // How long a verified client credential stays claimed, in seconds, so
+        // a StoreKit restore burst pays for one store round-trip. 0 disables.
+        'dedupe_ttl' => (int) env('APPSTORE_SUBSCRIPTIONS_DEDUPE_TTL', 60),
+
+        // The request fields a subscription post carries.
+        'request' => [
+            'store' => 'store',
+            'purchase_token' => 'purchase_token',
+            'signed_transaction' => 'signed_transaction',
+            'app_receipt' => 'app_receipt',
+        ],
+
+        // Defaults for Subscriptions\Console\VerifyStoreSubscriptions. A
+        // command may name its own block; keys it leaves out fall back here.
+        'verification' => [
+            // Only look at subscriptions expiring within this many days.
+            'check_within_days' => 3,
+            // Leave this long between store round-trips for the same subscription.
+            'recheck_after_hours' => 12,
+            // A row whose store call failed is eligible again this long after
+            // the failure instead of waiting out recheck_after_hours.
+            'retry_failed_after_hours' => 1,
+            // Give up on subscriptions that lapsed more than this many days ago;
+            // a returning user re-posts their credential from the app.
+            'abandon_after_days' => 30,
+            // Ceiling on how many subscriptions one run will verify.
+            'batch_limit' => 200,
+            // Pause between store calls, so a batch does not burst against
+            // Apple's or Google's rate limits.
+            'min_sleep_microseconds' => 100000,
+            'max_sleep_microseconds' => 500000,
         ],
     ],
 ];

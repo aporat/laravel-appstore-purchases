@@ -16,6 +16,9 @@ use ReceiptValidator\AbstractValidator;
  * @method static array<string> supportedValidators()
  * @method static array<string, string> appleAppStoreValidatorsByBundleId()
  * @method static array<string, array<string, mixed>> googlePlayRtdnExpectationsByPackageName()
+ * @method static array<string, mixed>|null validatorConfig(string $name)
+ * @method static list<string> subscriptionProducts(string $name)
+ * @method static string|null googlePlayValidatorForPackage(string $packageName)
  *
  * @see AppStorePurchasesManager
  * @see AbstractValidator

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "395482bd8cbed402060d7737a1f62d1f",
+    "content-hash": "1fa247c7a71ef453c748a6caa66d72e0",
     "packages": [
         {
             "name": "aporat/store-receipt-validator",
@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/aporat/store-receipt-validator.git",
-                "reference": "aa1c5e8d3e2075a55314f3f3172f3e1c05e7b8b1"
+                "reference": "d6fb98019fa816816038758b738aacd56cf31af3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/aporat/store-receipt-validator/zipball/aa1c5e8d3e2075a55314f3f3172f3e1c05e7b8b1",
-                "reference": "aa1c5e8d3e2075a55314f3f3172f3e1c05e7b8b1",
+                "url": "https://api.github.com/repos/aporat/store-receipt-validator/zipball/d6fb98019fa816816038758b738aacd56cf31af3",
+                "reference": "d6fb98019fa816816038758b738aacd56cf31af3",
                 "shasum": ""
             },
             "require": {
@@ -91,7 +91,7 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-10-11T00:07:10+00:00"
+            "time": "2026-10-20T12:35:48+00:00"
         },
         {
             "name": "brick/math",
@@ -9677,5 +9677,5 @@
         "ext-openssl": "*"
     },
     "platform-dev": {},
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }

@@ -284,6 +284,37 @@ class AppStorePurchasesManager
     }
 
     /**
+     * The raw config of one validator entry, or null when it is not defined.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function validatorConfig(string $name): ?array
+    {
+        return $this->validatorConfigs()[$name] ?? null;
+    }
+
+    /**
+     * The subscription product ids a validator entry sells, from its
+     * `subscription_products` list. A transaction or line item for any
+     * other product is ignored by the subscription layer.
+     *
+     * @return list<string>
+     */
+    public function subscriptionProducts(string $name): array
+    {
+        return Subscriptions\ValidatorConfig::products($name);
+    }
+
+    /**
+     * The name of the Google Play validator entry serving a package, or null
+     * when no entry declares that package name.
+     */
+    public function googlePlayValidatorForPackage(string $packageName): ?string
+    {
+        return Subscriptions\ValidatorConfig::playValidatorForPackage($packageName);
+    }
+
+    /**
      * Every configured validator entry that is an array, keyed by name.
      *
      * @return array<string, array<string, mixed>>
