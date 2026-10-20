@@ -499,6 +499,141 @@ APPSTORE_REPLAY_TTL=604800
 
 ---
 
+## 🧾 Subscriptions on accounts
+
+Everything above verifies a purchase and tells you about store events. This layer turns that into an entitlement on your own account model: a `subscriptions` table next to `accounts`, one row per (account, store), and an account column that says until when the user is subscribed. The same rules apply whether the write comes from the app posting its purchase, a store notification, or the re-verify worker.
+
+What it does for you:
+
+- **One row per store, the furthest expiry wins.** An account that bought on both platforms holds two rows; its entitlement is the later of the two, and a refund on one store leaves the other's subscription in force.
+- **A client credential only ever extends.** A stale or replayed token cannot cut an active subscription short. Webhooks and the worker are authoritative and apply what the store reports in either direction.
+- **Writes queue up on the account's row lock**, so a webhook, the worker and a client post for one account apply in turn instead of one undoing another.
+- **Purchases are labelled.** The uuid the account hands the app (`store_account_token`) goes out as StoreKit's `appAccountToken` and Play's `obfuscatedAccountId`, so a notification finds its account before the client has posted anything, a client post carrying another live account's label is refused, and a purchase made outside the app is labelled after the fact through Apple's Set App Account Token endpoint.
+- **A restore burst costs one store call.** StoreKit clients replay the transaction queue on launch; the same credential is deduped for a minute.
+- **Starts, offer starts and renewals are reported once** to your activity log, classified from how the row moved, so the same transaction arriving three ways is logged on whichever landed first.
+
+### Setup
+
+Publish and run the migrations, pointing them at the connection your accounts live on:
+
+```bash
+php artisan vendor:publish --tag=appstore-purchases-migrations
+php artisan migrate
+```
+
+They create `subscriptions` and add `subscription_end` and `store_account_token` to `accounts`. Then the models:
+
+```php
+use Aporat\AppStorePurchases\Subscriptions\Contracts\StoreSubscriber;
+use Aporat\AppStorePurchases\Subscriptions\ManagesStoreSubscriptions;
+use Aporat\AppStorePurchases\Subscriptions\StoreSubscription;
+
+final class Subscription extends StoreSubscription
+{
+    public function account(): BelongsTo
+    {
+        return $this->belongsTo(Account::class);
+    }
+}
+
+class Account extends Model implements StoreSubscriber
+{
+    use ManagesStoreSubscriptions;
+
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class);
+    }
+
+    /** The validator entries that verify this account's purchases. */
+    public function appStoreAppName(): string { return 'apple'; }
+    public function playAppName(): string { return 'google-play'; }
+
+    /** Optional: keep derived state in step after the entitlement may have moved. */
+    protected function subscriptionChanged(): void
+    {
+        $this->update(['plan' => $this->isSubscriptionActive() ? 'premium' : 'free']);
+    }
+
+    /** Optional: one line per subscription start, offer start or renewal. */
+    protected function logSubscriptionActivity(string $event, array $context, string $actor): void
+    {
+        Log::info($event, $context + ['account_id' => $this->id, 'actor' => $actor]);
+    }
+}
+```
+
+List the products each validator entry sells, and register the pair so the store notifications can find your accounts:
+
+```php
+'validators' => [
+    'apple' => [
+        // ...
+        'subscription_products' => ['com.myapp.plan.monthly', 'com.myapp.plan.yearly'],
+    ],
+    'google-play' => [
+        // ...
+        'subscription_products' => ['com.myapp.subscription'],
+    ],
+],
+
+'subscribers' => [
+    ['account' => App\Models\Account::class, 'subscription' => App\Models\Subscription::class, 'play_validator' => 'google-play'],
+],
+```
+
+### The purchase endpoint
+
+The iOS app posts the StoreKit 2 transaction's `jwsRepresentation` as `signed_transaction`; the Android app posts `store=play` with its `purchase_token`. Both on every purchase update and once per launch:
+
+```php
+use Aporat\AppStorePurchases\Subscriptions\SubscriptionRecorder;
+
+public function store(Request $request): JsonResponse
+{
+    $subscribedUntil = SubscriptionRecorder::record($this->account, $request);
+
+    return response()->json([
+        'subscribed' => $this->account->fresh()->isSubscriptionActive(),
+        'message' => $subscribedUntil ? 'You are subscribed until '.$subscribedUntil->toDayDateTimeString() : null,
+    ]);
+}
+```
+
+`record()` returns the expiry when this post moved the entitlement and the account is now active, else null. The signed transaction is verified offline, then the subscription is looked up on the App Store Server API and only Apple's answer grants anything. A StoreKit 1 app that can only send its app receipt is served by `record($account, $request, acceptAppReceipt: true)`: the receipt is verified against the Apple root (see `store-receipt-validator`'s `AppReceiptVerifier`) and must be for the validator's `bundle_id`. The field names are in `subscriptions.request`.
+
+Hand the account's `store_account_token` to the app in its account payload (`$account->ensureStoreAccountToken()`), and have the app set it as the purchase's `appAccountToken` (StoreKit) and `obfuscatedAccountId` (Play Billing).
+
+### Notifications
+
+With at least one subscriber configured, the package listens to its own events and applies them: a renewal, first purchase, upgrade, offer redemption, renewal extension or reversed refund applies the transaction; an expiry, refund or revoke pulls the entitlement; a Play notification re-reads the purchase from the Android Publisher API (the body is only a signal), and a Play revoke or voided purchase pulls it. Accounts are found by label and by the rows they hold, so a shared subscription reaches everyone on it. Your own listeners on the same events keep working.
+
+### The re-verify worker
+
+Both stores push notifications, so the worker is a safety net for the ones that were dropped: it re-reads subscriptions that are close to lapsing and not checked recently.
+
+```php
+use Aporat\AppStorePurchases\Subscriptions\Console\VerifyStoreSubscriptions;
+
+final class VerifySubscriptions extends VerifyStoreSubscriptions
+{
+    protected $signature = 'subscriptions:verify';
+
+    protected function subscriptionModel(): string
+    {
+        return Subscription::class;
+    }
+}
+```
+
+Schedule it hourly. The windows (`check_within_days`, `recheck_after_hours`, `abandon_after_days`, `batch_limit`, ...) default to `subscriptions.verification`; override `configKey()` to read your own block, and `scopeSubscriptionsToVerify()` to narrow the rows.
+
+### Logging
+
+The layer logs routine facts at `info`, refused client input at `warning` and failed store calls at `error`, on `APPSTORE_SUBSCRIPTIONS_LOG_CHANNEL` or the default channel.
+
+---
+
 ## 🪵 Logging
 
 Logging is disabled by default. To enable it, set the `APPSTORE_LOG_CHANNEL` environment variable to any Laravel log channel name:

@@ -5,4 +5,5 @@ parameters:
     level: 9
     paths:
         - src
+        - tests/Subscriptions/Fixtures
     tmpDir: .phpstan.cache

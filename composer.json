@@ -61,7 +61,8 @@
   "extra": {
     "laravel": {
       "providers": [
-        "Aporat\\AppStorePurchases\\AppStorePurchasesServiceProvider"
+        "Aporat\\AppStorePurchases\\AppStorePurchasesServiceProvider",
+        "Aporat\\AppStorePurchases\\Subscriptions\\SubscriptionsServiceProvider"
       ]
     }
   },

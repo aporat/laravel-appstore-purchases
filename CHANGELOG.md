@@ -10,6 +10,17 @@ is attributed it is to the pull request or commit that made it.
 
 ## [Unreleased]
 
+### Added
+- The subscription layer under `Subscriptions\`: `ManagesStoreSubscriptions` for an account model
+  (one `subscriptions` row per store, a client credential only extends, webhooks and the worker are
+  authoritative, writes under the account's row lock, purchase labelling through the account's
+  `store_account_token`, start / offer start / renewal reporting), the `StoreSubscription` base
+  model, `SubscriptionRecorder` for the purchase endpoint (signed transactions, Play tokens, opt-in
+  StoreKit 1 receipts, a dedupe window), the App Store and Google Play notification listeners wired
+  to the configured `subscribers`, the `VerifyStoreSubscriptions` command base, publishable
+  migrations, and `subscription_products` on validator entries. Manager helpers
+  `validatorConfig()`, `subscriptionProducts()` and `googlePlayValidatorForPackage()`.
+
 ### Changed
 - **Requires `aporat/store-receipt-validator` `dev-main`** instead of `^11.0`, to use its unreleased
   fixes (notification types it doesn't know, the App Store chain and iTunes validator fixes) ahead of
