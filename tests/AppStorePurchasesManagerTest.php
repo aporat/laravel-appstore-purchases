@@ -162,6 +162,80 @@ class AppStorePurchasesManagerTest extends TestCase
     }
 
     #[Test]
+    public function it_builds_the_apple_validator_from_an_inline_private_key()
+    {
+        $pem = (string) file_get_contents(__DIR__.'/AppleAppStore/certs/testSigningKey.p8');
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', null);
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', $pem);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->assertInstanceOf(AppleValidator::class, $manager->get('apple-app-store'));
+    }
+
+    #[Test]
+    public function an_inline_private_key_wins_over_a_missing_key_file()
+    {
+        $pem = (string) file_get_contents(__DIR__.'/AppleAppStore/certs/testSigningKey.p8');
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', '/invalid/path/to/key.p8');
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', $pem);
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->assertInstanceOf(AppleValidator::class, $manager->get('apple-app-store'));
+    }
+
+    #[Test]
+    public function it_requires_a_key_path_or_an_inline_private_key()
+    {
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', null);
+        $this->app['config']->set('appstore-purchases.validators.apple-app-store.private_key', '  ');
+
+        $manager = new AppStorePurchasesManager($this->app);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage("requires 'key_path' or 'private_key'");
+
+        $manager->get('apple-app-store');
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function flattenedPemProvider(): array
+    {
+        $pem = trim((string) file_get_contents(__DIR__.'/AppleAppStore/certs/testSigningKey.p8'));
+
+        return [
+            'line breaks collapsed to spaces (secrets-manager paste)' => [str_replace("\n", ' ', $pem)],
+            'literal backslash-n sequences (unquoted env value)' => [str_replace("\n", '\\n', $pem)],
+            'surrounding whitespace and CRLF' => ['  '.str_replace("\n", "\r\n", $pem)."\n"],
+            'already well formed' => [$pem."\n"],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('flattenedPemProvider')]
+    public function it_restores_the_line_structure_of_an_inline_private_key(string $flattened)
+    {
+        $expected = (string) file_get_contents(__DIR__.'/AppleAppStore/certs/testSigningKey.p8');
+
+        $normalize = new \ReflectionMethod(AppStorePurchasesManager::class, 'normalizePem');
+        $normalized = $normalize->invoke(new AppStorePurchasesManager($this->app), $flattened);
+
+        $this->assertSame(rtrim($expected)."\n", $normalized);
+        $this->assertNotFalse(openssl_pkey_get_private($normalized), 'OpenSSL must accept the normalised key');
+    }
+
+    #[Test]
+    public function it_leaves_a_string_without_a_pem_header_untouched()
+    {
+        $normalize = new \ReflectionMethod(AppStorePurchasesManager::class, 'normalizePem');
+
+        $this->assertSame('not a pem', $normalize->invoke(new AppStorePurchasesManager($this->app), " not a pem\n"));
+    }
+
+    #[Test]
     public function it_throws_exception_when_signing_key_file_is_missing()
     {
         $this->app['config']->set('appstore-purchases.validators.apple-app-store.key_path', '/invalid/path/to/key.p8');

@@ -327,18 +327,38 @@ class AppStorePurchasesManager
     }
 
     /**
+     * Build an App Store Server API validator from an In-App Purchase key.
+     *
+     * Accepts either 'private_key' (the key's PEM contents, e.g. from an
+     * environment variable or a secrets manager) or 'key_path' (path to the
+     * .p8 file), plus 'key_id', 'issuer_id' and 'bundle_id'.
+     *
      * @param  array<string, mixed>  $config
      */
     protected function createAppleAppStoreValidator(array $config): AbstractValidator
     {
-        foreach (['key_path', 'key_id', 'issuer_id', 'bundle_id'] as $key) {
+        foreach (['key_id', 'issuer_id', 'bundle_id'] as $key) {
             if (! isset($config[$key]) || ! is_string($config[$key]) || $config[$key] === '') {
                 throw new InvalidArgumentException("Apple App Store validator config is missing required '{$key}'.");
             }
         }
 
+        $signingKey = $config['private_key'] ?? null;
+
+        if (! is_string($signingKey) || trim($signingKey) === '') {
+            $path = $config['key_path'] ?? null;
+
+            if (! is_string($path) || $path === '') {
+                throw new InvalidArgumentException(
+                    "Apple App Store validator config requires 'key_path' or 'private_key'."
+                );
+            }
+
+            $signingKey = $this->readKeyFile($path, 'Signing key');
+        }
+
         return new AppleAppStoreValidator(
-            signingKey: $this->readKeyFile($config['key_path'], 'Signing key'),
+            signingKey: $this->normalizePem($signingKey),
             keyId: $config['key_id'],
             issuerId: $config['issuer_id'],
             bundleId: $config['bundle_id'],
@@ -482,6 +502,33 @@ class AppStorePurchasesManager
             developerSecret: $config['developer_secret'],
             environment: $this->environmentOf($config)
         );
+    }
+
+    /**
+     * Restore the line structure of a PEM key that passed through an
+     * environment variable or a secrets-manager field.
+     *
+     * Those channels often collapse the line breaks between the BEGIN line,
+     * the base64 body and the END line into spaces, or hand them over as the
+     * two characters "\n". OpenSSL rejects both forms. The body is re-wrapped
+     * at 64 columns, as `openssl` writes it. A string without a PEM header
+     * (or with an unrecognised shape) is returned untouched.
+     */
+    private function normalizePem(string $pem): string
+    {
+        $pem = trim(str_replace('\\n', "\n", $pem));
+
+        if (! preg_match('/^-----BEGIN ([A-Z ]+)-----(.*)-----END \1-----$/s', $pem, $m)) {
+            return $pem;
+        }
+
+        $body = preg_replace('/\s+/', '', $m[2]);
+
+        if (! is_string($body) || $body === '') {
+            return $pem;
+        }
+
+        return "-----BEGIN {$m[1]}-----\n".chunk_split($body, 64, "\n")."-----END {$m[1]}-----\n";
     }
 
     /**
