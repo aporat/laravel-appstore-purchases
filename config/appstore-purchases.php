@@ -93,11 +93,6 @@ return [
             'shared_secret' => env('ITUNES_SHARED_SECRET', ''),
             'environment' => env('ITUNES_ENVIRONMENT', 'SANDBOX'),
         ],
-        'amazon' => [
-            'validator' => 'amazon',
-            'developer_secret' => env('AMAZON_DEVELOPER_SECRET', ''),
-            'environment' => env('AMAZON_ENVIRONMENT', 'SANDBOX'),
-        ],
         'google-play' => [
             'validator' => 'google-play',
             'package_name' => env('GOOGLE_PLAY_PACKAGE_NAME', ''),

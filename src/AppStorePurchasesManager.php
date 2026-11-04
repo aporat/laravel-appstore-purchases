@@ -12,7 +12,6 @@ use Illuminate\Log\LogManager;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
 use ReceiptValidator\AbstractValidator;
-use ReceiptValidator\Amazon\Validator as AmazonValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleAppStoreValidator;
 use ReceiptValidator\Environment;
 use ReceiptValidator\GooglePlay\JWT\CallbackAccessTokenProvider;
@@ -31,7 +30,6 @@ class AppStorePurchasesManager
     private const DRIVERS = [
         'apple-app-store' => 'createAppleAppStoreValidator',
         'itunes' => 'createItunesValidator',
-        'amazon' => 'createAmazonValidator',
         'google-play' => 'createGooglePlayValidator',
     ];
 
@@ -513,21 +511,6 @@ class AppStorePurchasesManager
         $logger = $this->app->make('log');
 
         return $logger;
-    }
-
-    /**
-     * @param  array<string, mixed>  $config
-     */
-    protected function createAmazonValidator(array $config): AbstractValidator
-    {
-        if (! isset($config['developer_secret']) || ! is_string($config['developer_secret']) || $config['developer_secret'] === '') {
-            throw new InvalidArgumentException("Amazon validator config is missing required 'developer_secret'.");
-        }
-
-        return new AmazonValidator(
-            developerSecret: $config['developer_secret'],
-            environment: $this->environmentOf($config)
-        );
     }
 
     /**

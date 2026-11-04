@@ -1,6 +1,6 @@
 # Laravel App Store Purchases
 
-A Laravel package for validating in-app purchase receipts, managing subscriptions, and handling server notifications from the Apple App Store, iTunes, Google Play, and Amazon Appstore.
+A Laravel package for validating in-app purchase receipts, managing subscriptions, and handling server notifications from the Apple App Store, iTunes and Google Play.
 
 [![Latest Stable Version](https://img.shields.io/packagist/v/aporat/laravel-appstore-purchases.svg?style=flat-square&logo=composer)](https://packagist.org/packages/aporat/laravel-appstore-purchases)
 [![Downloads](https://img.shields.io/packagist/dt/aporat/laravel-appstore-purchases.svg?style=flat-square&logo=composer)](https://packagist.org/packages/aporat/laravel-appstore-purchases)
@@ -13,7 +13,7 @@ A Laravel package for validating in-app purchase receipts, managing subscription
 
 ## ✨ Features
 
-- Built-in receipt validators for the Apple App Store (Server API and StoreKit 2), legacy iTunes, Google Play and Amazon, configured once and resolved from the container
+- Built-in receipt validators for the Apple App Store (Server API and StoreKit 2), legacy iTunes and Google Play, configured once and resolved from the container
 - Dispatches Laravel events for all App Store Server Notification types, after verifying each notification belongs to one of your configured apps
 - Dispatches Laravel events for all Google Play Real-time Developer Notification types, with Pub/Sub push authentication
 - Replay protection on both notification endpoints
@@ -66,11 +66,6 @@ return [
             'shared_secret' => 'SHARED_SECRET',
             'environment' => Environment::SANDBOX,
         ],
-        'amazon' => [
-            'validator' => 'amazon',
-            'developer_secret' => 'DEVELOPER_SECRET',
-            'environment' => Environment::SANDBOX,
-        ],
         'google-play' => [
             'validator' => 'google-play',
             'package_name' => 'com.example',
@@ -88,8 +83,7 @@ The keys under `validators` are names you choose. Each entry builds one validato
 
 ### Validator names
 
-The `validator` key accepts `apple-app-store`, `itunes`, `amazon` and
-`google-play`. Camel, studly and snake spellings of those (`appleAppStore`,
+The `validator` key accepts `apple-app-store`, `itunes` and `google-play`. Camel, studly and snake spellings of those (`appleAppStore`,
 `AppleAppStore`, `apple_app_store`) and the short aliases `apple`, `google` and
 `play` resolve to the same drivers. `AppStorePurchases::supportedValidators()`
 returns the canonical list.
@@ -278,43 +272,6 @@ APPSTORE_GOOGLE_TOKEN_REFRESH_MARGIN=300
 The access token is stored in the cache in plain text, like any other cache value: it grants Android Publisher API access for under an hour. With `APPSTORE_GOOGLE_CACHE=false` each validator instance mints and keeps its own token, as before.
 
 > ℹ️ Google has no sandbox endpoint, so the `environment` of a Google Play entry is informational. Licence-tester purchases come back from the production API flagged as `isTestPurchase()`.
-
-### 🛒 Amazon Appstore
-
-Pass the receipt ID and user ID the app received in its `PurchaseResponse`:
-
-```php
-use Aporat\AppStorePurchases\Facades\AppStorePurchases;
-use ReceiptValidator\Amazon\APIError;
-use ReceiptValidator\Exceptions\ValidationException;
-
-try {
-    $response = AppStorePurchases::get('amazon')->validate($receiptId, $userId);
-} catch (ValidationException $e) {
-    $error = APIError::fromException($e); // null for connection failures
-
-    if ($error?->isCanceledReceipt()) {
-        // HTTP 410: the receipt was valid once. Revoke what it granted.
-    } elseif ($error?->isRetryable()) {
-        // HTTP 429 or 500: back off and try again later.
-    }
-
-    abort(422, $e->getMessage());
-}
-
-$response->getProductId();
-$response->getProductType();      // CONSUMABLE, ENTITLED or SUBSCRIPTION
-$response->isEntitled();
-$response->getExpiresAt();        // subscriptions only
-
-$transaction = $response->getTransaction();
-
-if ($transaction?->isSubscription()) {
-    $transaction->isAutoRenewing();
-    $transaction->isInFreeTrial();
-    $transaction->isInGracePeriod();
-}
-```
 
 ### Validating against a different environment
 
