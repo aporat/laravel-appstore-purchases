@@ -10,7 +10,6 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-use ReceiptValidator\Amazon\Validator as AmazonValidator;
 use ReceiptValidator\AppleAppStore\Validator as AppleValidator;
 use ReceiptValidator\Environment;
 use ReceiptValidator\GooglePlay\Validator as GooglePlayValidator;
@@ -32,12 +31,6 @@ class AppStorePurchasesManagerTest extends TestCase
         $app['config']->set('appstore-purchases.validators.itunes', [
             'validator' => 'itunes',
             'shared_secret' => 'SHARED_SECRET',
-            'environment' => Environment::SANDBOX,
-        ]);
-
-        $app['config']->set('appstore-purchases.validators.amazon', [
-            'validator' => 'amazon',
-            'developer_secret' => 'DEVELOPER_SECRET',
             'environment' => Environment::SANDBOX,
         ]);
 
@@ -72,16 +65,6 @@ class AppStorePurchasesManagerTest extends TestCase
         $validator = $manager->get('itunes');
 
         $this->assertInstanceOf(iTunesValidator::class, $validator);
-    }
-
-    #[Test]
-    public function it_resolves_amazon_validator()
-    {
-        $manager = new AppStorePurchasesManager($this->app);
-
-        $validator = $manager->get('amazon');
-
-        $this->assertInstanceOf(AmazonValidator::class, $validator);
     }
 
     #[Test]
@@ -273,11 +256,9 @@ class AppStorePurchasesManagerTest extends TestCase
         $manager = new AppStorePurchasesManager($this->app);
 
         $itunesValidator = $manager->get('itunes');
-        $amazonValidator = $manager->get('amazon');
         $appleValidator = $manager->get('apple-app-store');
 
         $this->assertSame(Environment::SANDBOX, $itunesValidator->getEnvironment());
-        $this->assertSame(Environment::SANDBOX, $amazonValidator->getEnvironment());
         $this->assertSame(Environment::SANDBOX, $appleValidator->getEnvironment());
     }
 
@@ -533,19 +514,6 @@ class AppStorePurchasesManagerTest extends TestCase
     }
 
     #[Test]
-    public function it_throws_when_amazon_developer_secret_is_missing()
-    {
-        $this->app['config']->set('appstore-purchases.validators.amazon.developer_secret', '');
-
-        $manager = new AppStorePurchasesManager($this->app);
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage("Amazon validator config is missing required 'developer_secret'");
-
-        $manager->get('amazon');
-    }
-
-    #[Test]
     public function it_throws_when_apple_required_key_is_missing()
     {
         $this->app['config']->set('appstore-purchases.validators.apple-app-store.bundle_id', '');
@@ -703,6 +671,6 @@ class AppStorePurchasesManagerTest extends TestCase
     {
         $manager = new AppStorePurchasesManager($this->app);
 
-        $this->assertSame(['apple-app-store', 'itunes', 'amazon', 'google-play'], $manager->supportedValidators());
+        $this->assertSame(['apple-app-store', 'itunes', 'google-play'], $manager->supportedValidators());
     }
 }

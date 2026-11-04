@@ -10,6 +10,12 @@ is attributed it is to the pull request or commit that made it.
 
 ## [Unreleased]
 
+### Removed
+- **Breaking:** the Amazon Appstore validator driver (`'validator' => 'amazon'`) and the `amazon`
+  entry in the default config. `aporat/store-receipt-validator` dropped its `Amazon` namespace after
+  Amazon shut the Appstore down on general Android devices on 2025-08-20. `AMAZON_DEVELOPER_SECRET`
+  and `AMAZON_ENVIRONMENT` are no longer read.
+
 ## [5.0.0] - 2026-10-20
 
 ### Added
