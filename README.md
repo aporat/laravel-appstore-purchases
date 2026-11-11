@@ -465,7 +465,6 @@ What it does for you:
 - **A client credential only ever extends.** A stale or replayed token cannot cut an active subscription short. Webhooks and the worker are authoritative and apply what the store reports in either direction.
 - **Writes queue up on the account's row lock**, so a webhook, the worker and a client post for one account apply in turn instead of one undoing another.
 - **Purchases are labelled.** The uuid the account hands the app (`store_account_token`) goes out as StoreKit's `appAccountToken` and Play's `obfuscatedAccountId`, so a notification finds its account before the client has posted anything, a client post carrying another live account's label is refused, and a purchase made outside the app is labelled after the fact through Apple's Set App Account Token endpoint.
-- **A restore burst costs one store call.** StoreKit clients replay the transaction queue on launch; the same credential is deduped for a minute.
 - **Starts, offer starts and renewals are reported once** to your activity log, classified from how the row moved, so the same transaction arriving three ways is logged on whichever landed first.
 
 ### Setup

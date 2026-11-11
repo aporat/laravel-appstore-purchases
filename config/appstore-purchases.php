@@ -169,10 +169,6 @@ return [
         // warning, failed store calls at error. Null for the default channel.
         'log_channel' => env('APPSTORE_SUBSCRIPTIONS_LOG_CHANNEL'),
 
-        // How long a verified client credential stays claimed, in seconds, so
-        // a StoreKit restore burst pays for one store round-trip. 0 disables.
-        'dedupe_ttl' => (int) env('APPSTORE_SUBSCRIPTIONS_DEDUPE_TTL', 60),
-
         // The request fields a subscription post carries.
         'request' => [
             'store' => 'store',

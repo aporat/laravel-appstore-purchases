@@ -6,7 +6,6 @@ namespace Aporat\AppStorePurchases\Tests\Subscriptions;
 
 use Aporat\AppStorePurchases\Subscriptions\SubscriptionRecorder;
 use Aporat\AppStorePurchases\Tests\Subscriptions\Fixtures\StoreFixtures;
-use Error;
 use Illuminate\Http\Request;
 
 final class SubscriptionRecorderTest extends SubscriptionsTestCase
@@ -63,43 +62,14 @@ final class SubscriptionRecorderTest extends SubscriptionsTestCase
         self::assertNull(SubscriptionRecorder::record($this->account(), $this->subscriptionPost(['app_receipt' => base64_encode('not a receipt')]), acceptAppReceipt: true));
     }
 
-    public function test_a_restore_burst_pays_for_one_store_call(): void
+    public function test_every_post_reaches_the_store(): void
     {
-        $this->fakePlayValidator()->shouldReceive('getSubscriptionPurchaseV2')->once()->andReturn(StoreFixtures::playPurchase(now()->addDays(30)));
-        $account = $this->account();
-
-        self::assertNotNull(SubscriptionRecorder::record($account, $this->subscriptionPost(['store' => 'play', 'purchase_token' => StoreFixtures::PLAY_TOKEN])));
-        self::assertNull(SubscriptionRecorder::record($account, $this->subscriptionPost(['store' => 'play', 'purchase_token' => StoreFixtures::PLAY_TOKEN])));
-        self::assertNull(SubscriptionRecorder::record($account, $this->subscriptionPost(['store' => 'play', 'purchase_token' => StoreFixtures::PLAY_TOKEN])));
-    }
-
-    public function test_a_failed_verification_releases_the_dedupe_claim(): void
-    {
-        // The store lookups absorb their own API errors (they return null and
-        // log), so only something unexpected escapes: an Error here stands in
-        // for a database failure mid-write.
-        $validator = $this->fakeAppleValidator();
-        $validator->shouldReceive('verifySignedTransaction')->twice()->andThrow(new Error('boom'));
-        $account = $this->account();
-
-        foreach ([1, 2] as $attempt) {
-            try {
-                SubscriptionRecorder::record($account, $this->subscriptionPost(['signed_transaction' => 'jws']));
-                self::fail('Expected the error to propagate');
-            } catch (Error $e) {
-                self::assertSame('boom', $e->getMessage(), "attempt {$attempt} reached the store");
-            }
-        }
-    }
-
-    public function test_the_dedupe_window_can_be_turned_off(): void
-    {
-        config(['appstore-purchases.subscriptions.dedupe_ttl' => 0]);
         $this->fakePlayValidator()->shouldReceive('getSubscriptionPurchaseV2')->twice()->andReturn(StoreFixtures::playPurchase(now()->addDays(30)));
         $account = $this->account();
 
-        SubscriptionRecorder::record($account, $this->subscriptionPost(['store' => 'play', 'purchase_token' => StoreFixtures::PLAY_TOKEN]));
-        SubscriptionRecorder::record($account, $this->subscriptionPost(['store' => 'play', 'purchase_token' => StoreFixtures::PLAY_TOKEN]));
+        self::assertNotNull(SubscriptionRecorder::record($account, $this->subscriptionPost(['store' => 'play', 'purchase_token' => StoreFixtures::PLAY_TOKEN])));
+        // Verified again (the mock expects two calls), though the expiry no longer moves.
+        self::assertNull(SubscriptionRecorder::record($account, $this->subscriptionPost(['store' => 'play', 'purchase_token' => StoreFixtures::PLAY_TOKEN])));
     }
 
     public function test_the_request_fields_are_configurable(): void

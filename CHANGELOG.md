@@ -11,6 +11,11 @@ is attributed it is to the pull request or commit that made it.
 ## [Unreleased]
 
 ### Removed
+- **Breaking:** the client-credential dedupe window in `SubscriptionRecorder::record()` and the
+  `subscriptions.dedupe_ttl` config key (`APPSTORE_SUBSCRIPTIONS_DEDUPE_TTL`). It existed for a
+  StoreKit 1 client that replayed one POST per historical purchase with the same receipt; every
+  post is now verified with the store, and concurrent posts for one account still apply in turn
+  on its row lock. Notification replay protection (`NotificationReplayGuard`) is unchanged.
 - **Breaking:** the Amazon Appstore validator driver (`'validator' => 'amazon'`) and the `amazon`
   entry in the default config. `aporat/store-receipt-validator` dropped its `Amazon` namespace after
   Amazon shut the Appstore down on general Android devices on 2025-08-20. `AMAZON_DEVELOPER_SECRET`
